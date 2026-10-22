@@ -1,0 +1,41 @@
+# Party Survivors (prototype)
+
+Lead a party of three heroes through a horde. Steer one, the other two fight at your heels, and swap who leads at any moment.
+
+This is **milestone 1**: a grey-box prototype to answer one question — is steering a party through a crowd fun?
+
+## How to play it
+
+1. Install **Godot 4.7** (standard version) from godotengine.org.
+2. Open Godot, choose **Import**, and select this folder's `project.godot`.
+3. Press **F5** (or the ▶ Play button, top right).
+
+## Controls
+
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| Move | WASD or arrow keys | Left stick |
+| Swap leader | Space or Shift | A or right bumper |
+| Pick a level-up card | 1 / 2 / 3 or click | X / Y / B |
+| Restart after a run | R | Start |
+
+Fallen heroes get back up if the leader stands next to them for 3 seconds.
+
+## The heroes (grey-box versions)
+
+- **Solenne**: cuts in an arc. Gains Contempt when struck (+5% damage per stack).
+- **Cenhelm**: slams everything around him; damage scales with his max HP. Takes 25% of every hit aimed at his allies.
+- **Kheiron**: fires bolts and heals the most hurt ally. He is Incurable: nothing heals him.
+
+The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst.
+
+## Project layout
+
+- `scenes/main.tscn`: the one scene; everything else is built in code for now.
+- `scripts/`: one script per system (party, hero, enemies, XP, effects, HUD, upgrades). Each file starts with a comment explaining what it does.
+- `tests/smoke_test.gd`: a bot that plays a full run without a window and reports how it went. Run it with:
+  `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd`
+
+## Next: milestone 2
+
+Ultimates that fire when a hero swaps in, more enemy types, an elite, the boss at 12 minutes, and real skill-upgrade cards.
