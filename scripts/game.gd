@@ -143,6 +143,8 @@ func _setup_input() -> void:
 	_bind_button("pick_2", JOY_BUTTON_Y)
 	_bind_button("pick_3", JOY_BUTTON_B)
 	_bind_keys("restart", [KEY_ENTER, KEY_KP_ENTER])
+	_bind_keys("reroll", [KEY_F])
+	_bind_keys("banish", [KEY_B])
 	_bind_button("restart", JOY_BUTTON_START)
 
 

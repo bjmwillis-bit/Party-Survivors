@@ -20,6 +20,7 @@ This is **milestone 1**: a grey-box prototype to answer one question — is stee
 | Leader's ultimate | R | Right trigger |
 | Swap leader | Space or Shift | A or right bumper |
 | Pick a level-up card | 1 / 2 / 3 or click | X / Y / B |
+| Reroll / banish (level-up screen) | F / B | |
 | Restart after a run | Enter | Start |
 
 Fallen heroes get back up if the leader stands next to them for 3 seconds.
@@ -56,12 +57,30 @@ Enemies strike in distinct blows (once a second each, after a short wind-up).
 
 The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst.
 
+## Level-up cards
+
+Cards are coloured by hero (Solenne red, Cenhelm orange, Kheiron green, party grey) and bordered by rarity, each with its own reveal:
+
+| Rarity | Reveal | What's in it |
+|---|---|---|
+| Common | Already there | Small stat boosts |
+| Rare | Blue, after 0.5 s, gentle glow | Bigger stats, cooldowns, extra bolts |
+| Epic | Purple, crackles for 1 s, then a lightning strike | Behaviour changers |
+| Legendary | Gold, burns into place over 1.5 s, flames stay | Ultimate upgrades (every 5th level) |
+| Bond | Gold with lightning, split diagonally into two heroes' colours | Duo combos |
+
+- Every 5th level offers 3 cards drawn from all heroes' remaining ultimate upgrades plus any unlocked bonds, so the hero you want isn't guaranteed.
+- A bond unlocks once both of its heroes have at least one ultimate card. Three for now: *Back to Back* (Solenne + Cenhelm), *Penance* (Solenne + Kheiron), *Walk Out Together* (Cenhelm + Kheiron).
+- 3 rerolls and 3 banishes per run. A banished card never comes back that run.
+- The full card list is in `scripts/upgrades.gd`.
+
 ## Project layout
 
 - `scenes/main.tscn`: the one scene; everything else is built in code for now.
 - `scripts/`: one script per system (party, hero, enemies, XP, effects, HUD, upgrades). Each file starts with a comment explaining what it does.
 - `tests/smoke_test.gd`: a bot that plays a full run without a window and reports how it went. Run it with:
   `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd`
+- `tests/all_cards_test.gd`: switches on every card at once and plays two minutes, to catch broken card effects.
 
 ## Next
 

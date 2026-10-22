@@ -107,6 +107,11 @@ var invulnerable := false
 var cooldown := {"q": 0.0, "e": 0.0, "r": 0.0} # seconds left
 ## How often each skill went off this run (for tuning and tests).
 var stats := {"q": 0, "e": 0, "r": 0, "counter": 0}
+## Effects switched on by epic and ultimate cards (card id -> value).
+var mods := {}
+var ult_cards := 0 # ultimate cards taken for this hero (bonds need one)
+var cd_mult := {"q": 1.0, "e": 1.0, "r": 1.0}
+var damage_buff_t := 0.0 # Shared Sky: +20% damage while > 0
 
 var _attack_timer := 0.4
 var _taunt_time := 0.0
@@ -122,6 +127,13 @@ var _ult_dir := Vector2.ZERO
 var _ult_from := Vector3.ZERO
 var _ult_to := Vector3.ZERO
 var _ult_hit := {}
+var _ult_start := Vector3.ZERO
+var _ult_mult := 1.0
+var _ult_returning := false
+var _swing_count := 0
+var _punch_count := 0
+var _freca := 0 # punches left at double damage
+var _counter_boost_t := 0.0 # Back to Back: doubled counter chance while > 0
 var _contempt_hit_cd := 0.0
 var _contempt_decay := 0.0
 var _flash := 0.0
@@ -157,6 +169,8 @@ func _process(delta: float) -> void:
 	_hurt_flash_cd = maxf(0.0, _hurt_flash_cd - delta)
 	face_lock = maxf(0.0, face_lock - delta)
 	_taunt_time = maxf(0.0, _taunt_time - delta)
+	damage_buff_t = maxf(0.0, damage_buff_t - delta)
+	_counter_boost_t = maxf(0.0, _counter_boost_t - delta)
 	for slot in cooldown:
 		cooldown[slot] = maxf(0.0, cooldown[slot] - delta)
 	if _flash > 0.0:
@@ -240,7 +254,13 @@ func _power() -> float:
 		p *= 1.0 + 0.05 * contempt
 	if is_leader:
 		p *= Game.party.lead_bonus
+	if damage_buff_t > 0.0:
+		p *= 1.2
 	return p
+
+
+func has_mod(id: String) -> bool:
+	return bool(mods.get(id, false))
 
 
 func _my_xz() -> Vector2:
@@ -293,16 +313,24 @@ func _attack_solenne() -> bool:
 		return false
 	var yaw := atan2(dir.x, dir.y)
 	var dmg := _power()
+	_swing_count += 1
+	_slash(me, dir, reach, half, dmg)
+	# Wasn't Looking: every third slash also cuts the arc behind her.
+	if has_mod("sol_third") and _swing_count % 3 == 0:
+		_slash(me, -dir, reach, half, dmg)
+	facing = yaw
+	face_lock = 0.15
+	_lunge = 1.0
+	return true
+
+
+func _slash(me: Vector2, dir: Vector2, reach: float, half: float, dmg: float) -> void:
 	for i in Game.enemies.query(me, reach):
 		var rel: Vector2 = Game.enemies.pos[i] - me
 		if rel.length() > 0.001 and absf(dir.angle_to(rel)) > half:
 			continue
 		Game.enemies.damage(i, dmg, rel.normalized(), 6.0)
-	Game.fx.slash(position, yaw, reach, half, accent)
-	facing = yaw
-	face_lock = 0.15
-	_lunge = 1.0
-	return true
+	Game.fx.slash(position, atan2(dir.x, dir.y), reach, half, accent)
 
 
 ## Left, right, left, right: each punch splashes where it lands.
@@ -313,20 +341,36 @@ func _attack_cenhelm() -> bool:
 	if dir == Vector2.ZERO:
 		return false
 	_punch_side = -_punch_side
+	_punch_count += 1
 	var side := Vector2(-dir.y, dir.x)
 	var impact := me + dir * FIST_REACH * 0.8 + side * 0.3 * _punch_side
 	var dmg := _power()
+	var knock := 5.0
+	# First Blow: every 4th punch is an uppercut.
+	var uppercut := has_mod("cen_uppercut") and _punch_count % 4 == 0
+	if uppercut:
+		dmg *= 2.0
+		splash *= 1.8
+		knock = 12.0
+	# Freca: punches after the Horn hit twice as hard.
+	if _freca > 0:
+		dmg *= 2.0
+		_freca -= 1
 	for i in Game.enemies.query(impact, splash):
 		var rel: Vector2 = Game.enemies.pos[i] - impact
 		var push := rel.normalized() if rel.length() > 0.05 else dir
-		Game.enemies.damage(i, dmg, push, 5.0)
+		Game.enemies.damage(i, dmg, push, knock)
 	Game.fx.ring(Vector3(impact.x, 0.0, impact.y), splash, accent, 0.15)
+	if uppercut:
+		Game.fx.ring(Vector3(impact.x, 0.0, impact.y), splash * 0.6, Color.WHITE, 0.15)
+		if is_leader:
+			Game.add_shake(0.15)
 	facing = atan2(dir.x, dir.y)
 	face_lock = 0.15
 	_lunge = 0.7
 	_twist = 0.35 * _punch_side
 	# Every punch brings The Gate closer.
-	cooldown["q"] = maxf(0.0, cooldown["q"] - 1.0)
+	cooldown["q"] = maxf(0.0, cooldown["q"] - (1.5 if has_mod("cen_gate_cdr") else 1.0))
 	return true
 
 
@@ -341,7 +385,7 @@ func _attack_kheiron() -> bool:
 	var count := 1 + extra_bolts
 	for b in count:
 		var spread := (b - (count - 1) * 0.5) * 0.18
-		Game.fx.bolt(position + Vector3(0.0, 1.0, 0.0), to.rotated(spread), _power(), 0, accent)
+		Game.fx.bolt(position + Vector3(0.0, 1.0, 0.0), to.rotated(spread), _power(), 2 if has_mod("khe_pierce") else 0, accent)
 	facing = atan2(to.x, to.y)
 	face_lock = 0.12
 	_lunge = 0.4
@@ -383,7 +427,7 @@ func cast(slot: String) -> bool:
 		"kheiron_r":
 			done = _give_the_sky()
 	if done:
-		cooldown[slot] = DATA[kind][slot]["cd"]
+		cooldown[slot] = DATA[kind][slot]["cd"] * cd_mult[slot]
 		stats[slot] += 1
 	return done
 
@@ -412,6 +456,8 @@ func _worth_casting(slot: String) -> bool:
 ## Solenne E: taunt nearby enemies and harden.
 func _face_me() -> bool:
 	Game.enemies.taunt_in_radius(_my_xz(), TAUNT_RADIUS, Game.party.heroes.find(self), TAUNT_TIME)
+	if has_mod("sol_pull"):
+		Game.enemies.pull(_my_xz(), TAUNT_RADIUS, 9.0)
 	_taunt_time = TAUNT_TIME
 	Game.fx.ring(position, TAUNT_RADIUS, accent, 0.35)
 	if is_leader:
@@ -428,6 +474,8 @@ func _the_gate() -> bool:
 		var rel: Vector2 = Game.enemies.pos[i] - me
 		var push := rel.normalized() if rel.length() > 0.05 else Vector2.RIGHT
 		Game.enemies.damage(i, dmg, push, 12.0)
+		if has_mod("cen_gate_stun"):
+			Game.enemies.stun(i, 1.0)
 	Game.fx.ring(position, r, accent, 0.25)
 	Game.fx.ring(position, r * 0.6, Color.WHITE, 0.18)
 	_lunge = 0.8
@@ -505,25 +553,56 @@ func _tick_dash(delta: float) -> void:
 			Game.enemies.damage(i, dmg, push, 7.0)
 		Game.fx.ring(position, land, accent, 0.22)
 		Game.fx.ring(position, land * 0.5, Color.WHITE, 0.15)
+		# Face The Fist: enemies around the landing turn on him.
+		if has_mod("cen_walk_taunt"):
+			Game.enemies.taunt_in_radius(me, 3.5, Game.party.heroes.find(self), 3.0)
+		# Walk Out Together (bond): a small grove where he lands.
+		if Game.party.bonds.has("bond_together"):
+			var k = Game.party.hero("Kheiron")
+			var hm: float = k.heal_mult if k != null else 1.0
+			Game.party.place_grove(position, 3.0, 3.0, GROVE_HEAL * hm)
 		if is_leader:
 			Game.add_shake(0.25)
 
 
 ## Kheiron Q: heal the most hurt ally.
 func _lesson() -> bool:
-	var t = Game.party.lowest_health_ally(self, 1.0)
-	if t == null:
+	var targets := _hurt_allies(2 if has_mod("khe_lesson_two") else 1)
+	if targets.is_empty():
 		return false
-	t.heal(t.max_hp * LESSON_HEAL * heal_mult)
-	Game.fx.ring(t.position, 1.2, accent, 0.35)
+	for t in targets:
+		t.heal(t.max_hp * LESSON_HEAL * heal_mult)
+		Game.fx.ring(t.position, 1.2, accent, 0.35)
 	Game.fx.ring(position, 0.8, accent, 0.2)
 	_lunge = 0.5
+	# The Wound: a volley at the enemy nearest the healed ally.
+	if has_mod("khe_volley"):
+		var t0 = targets[0]
+		var e: int = Game.enemies.nearest(Vector2(t0.position.x, t0.position.z), 8.0)
+		if e >= 0:
+			var to: Vector2 = (Game.enemies.pos[e] - _my_xz()).normalized()
+			for k in 3:
+				Game.fx.bolt(position + Vector3(0.0, 1.0, 0.0), to.rotated((k - 1) * 0.12), _power(), 0, accent)
 	return true
+
+
+## The `n` living allies (not himself) with the lowest health percentage,
+## counting only those who are missing health.
+func _hurt_allies(n: int) -> Array:
+	var list: Array = []
+	for h in Game.party.heroes:
+		if h == self or h.downed or h.hp >= h.max_hp:
+			continue
+		list.append(h)
+	list.sort_custom(func(a, b): return a.hp / a.max_hp < b.hp / b.max_hp)
+	return list.slice(0, n)
 
 
 ## Kheiron E: a grove at his feet that heals allies standing in it.
 func _the_grove() -> bool:
-	Game.party.place_grove(position, Game.party.LEASH, GROVE_TIME, GROVE_HEAL * heal_mult)
+	var seconds := GROVE_TIME + float(mods.get("grove_time", 0.0))
+	var slow := 0.3 if has_mod("khe_grove_slow") else 0.0
+	Game.party.place_grove(position, Game.party.LEASH, seconds, GROVE_HEAL * heal_mult, slow)
 	return true
 
 
@@ -543,8 +622,20 @@ func _ultrix() -> bool:
 		Game.enemies.damage(i, dmg, rel.normalized(), 8.0)
 	var yaw := atan2(_ult_dir.x, _ult_dir.y)
 	Game.fx.slash(position, yaw, reach, half, accent)
+	# Even Blind: the backstep slash fires three flame waves.
+	if has_mod("sol_u_flames"):
+		for k in 3:
+			Game.fx.bolt(position + Vector3(0.0, 0.7, 0.0), _ult_dir.rotated((k - 1) * 0.2), _power() * 1.5, 99,
+				Color(1.0, 0.45, 0.1), 15.0, 2.2, 0.8)
+	# Contempt Unbound: spend all Contempt for a heavier lunge.
+	_ult_mult = 1.0
+	if has_mod("sol_u_contempt"):
+		_ult_mult += 0.1 * contempt
+		contempt = 0
 	facing = yaw
 	face_lock = 0.6
+	_ult_start = position
+	_ult_returning = false
 	_ult_from = position
 	_ult_to = position - Vector3(_ult_dir.x, 0.0, _ult_dir.y) * ULTRIX_BACKSTEP
 	_ult_phase = 1
@@ -578,24 +669,58 @@ func _tick_ultrix(delta: float) -> void:
 	var t := minf(1.0, _ult_t / 0.18)
 	position = _ult_from.lerp(_ult_to, t)
 	var me := _my_xz()
-	var dmg := _power() * ULTRIX_LUNGE_MULT
+	var dmg := _power() * ULTRIX_LUNGE_MULT * _ult_mult
+	var lunge_dir: Vector2 = Vector2(_ult_to.x - _ult_from.x, _ult_to.z - _ult_from.z).normalized()
 	for i in Game.enemies.query(me, 1.3):
 		if _ult_hit.has(i):
 			continue
 		_ult_hit[i] = true
-		Game.enemies.damage(i, dmg, _ult_dir, 10.0)
+		Game.enemies.damage(i, dmg, lunge_dir, 10.0)
 	_lunge = 1.0
 	if t >= 1.0:
+		Game.fx.ring(position, 2.0, Color(1.0, 0.15, 0.1), 0.2)
+		# Scorched Path: the lunge leaves burning ground.
+		if has_mod("sol_u_scorch"):
+			Game.fx.fire_line(_ult_from, _ult_to, 1.0, 4.0, _power() * 0.8)
+		# Twice Blind: lunge back the way she came.
+		if has_mod("sol_u_twice") and not _ult_returning:
+			_ult_returning = true
+			_ult_t = 0.0
+			_ult_hit = {}
+			_ult_from = position
+			_ult_to = _ult_start
+			facing = atan2(_ult_to.x - _ult_from.x, _ult_to.z - _ult_from.z)
+			Game.fx.thrust(position, facing, _ult_from.distance_to(_ult_to), Color(1.0, 0.15, 0.1))
+			return
 		_ult_phase = 0
 		dashing = false
 		invulnerable = false
-		Game.fx.ring(position, 2.0, Color(1.0, 0.15, 0.1), 0.2)
 
 
 ## Cenhelm R: blows the horn.
 func _the_horn() -> bool:
 	var tick := (base_damage * damage_mult + max_hp * 0.035) * HORN_TICK_MULT
-	Game.enemies.horn(_my_xz(), HORN_RADIUS, HORN_TIME, tick, HORN_PUSH)
+	var me := _my_xz()
+	var long := has_mod("cen_u_long")
+	Game.enemies.horn(me, HORN_RADIUS, 10.0 if long else HORN_TIME, tick, HORN_PUSH, 0.65 if long else 0.5)
+	# Last Man: everything is stunned before the slow takes over.
+	if has_mod("cen_u_stun"):
+		for i in Game.enemies.query(me, HORN_RADIUS):
+			Game.enemies.stun(i, 1.5)
+	# The Warhorn: heals every ally.
+	if has_mod("cen_u_heal"):
+		for h in Game.party.heroes:
+			h.heal(h.max_hp * 0.15)
+	# Freca: the next 10 punches hit twice as hard.
+	if has_mod("cen_u_freca"):
+		_freca = 10
+	# Back to Back (bond): everything in range turns on Solenne, and her
+	# counters come twice as often for a while.
+	var sol = Game.party.hero("Solenne")
+	if Game.party.bonds.has("bond_back") and sol != null and not sol.downed:
+		Game.enemies.taunt_in_radius(me, HORN_RADIUS, Game.party.heroes.find(sol), 6.0)
+		sol._counter_boost_t = 6.0
+		Game.fx.ring(sol.position, 2.5, sol.accent, 0.4)
 	Game.fx.ring(position, HORN_RADIUS, accent, 0.6)
 	Game.fx.ring(position, HORN_RADIUS * 0.5, accent, 0.45)
 	Game.fx.ring(position, 3.0, Color.WHITE, 0.3)
@@ -608,14 +733,23 @@ func _the_horn() -> bool:
 
 ## Kheiron R: pays health to reset the other heroes' ultimates.
 func _give_the_sky() -> bool:
-	hp = maxf(1.0, hp - max_hp * SKY_COST)
+	var cost := 0.1 if has_mod("khe_u_light") else SKY_COST
+	hp = maxf(1.0, hp - max_hp * cost)
 	_flash = 0.12
 	for h in Game.party.heroes:
 		if h == self:
 			continue
 		h.cooldown["r"] = 0.0
-		if not h.downed:
-			Game.fx.ring(h.position, 1.4, accent, 0.4)
+		if has_mod("khe_u_open"):
+			h.cooldown["q"] = 0.0
+			h.cooldown["e"] = 0.0
+		if h.downed:
+			continue
+		Game.fx.ring(h.position, 1.4, accent, 0.4)
+		if has_mod("khe_u_grove"):
+			Game.party.place_grove(h.position, 4.0, GROVE_TIME, GROVE_HEAL * heal_mult)
+		if has_mod("khe_u_shared"):
+			h.damage_buff_t = 8.0
 	Game.fx.ring(position, 2.5, accent, 0.45)
 	if is_leader:
 		Game.add_shake(0.2)
@@ -654,9 +788,16 @@ func _counter(attacker: int) -> void:
 			line.append([along, i])
 	line.sort_custom(func(a, b): return a[0] < b[0])
 	var dmg := _power()
-	for k in mini(line.size(), COUNTER_MAX_TARGETS):
-		Game.enemies.damage(line[k][1], dmg, dir, 8.0)
+	var strikes := 2 if has_mod("sol_counter_twice") else 1
+	for s in strikes:
+		for k in mini(line.size(), COUNTER_MAX_TARGETS):
+			Game.enemies.damage(line[k][1], dmg, dir, 8.0)
 	stats["counter"] += 1
+	# Penance (bond): each counter heals the lowest-health ally a little.
+	if Game.party.bonds.has("bond_penance"):
+		var low = Game.party.lowest_health_ally(null, 1.0)
+		if low != null:
+			low.heal(low.max_hp * 0.01)
 	var yaw := atan2(dir.x, dir.y)
 	Game.fx.thrust(position, yaw, reach, accent)
 	facing = yaw
@@ -671,8 +812,15 @@ func take_hit(amount: float, attacker: int) -> void:
 	if downed or invulnerable:
 		return
 	take_damage(amount)
-	if kind == "solenne" and not downed and randf() < COUNTER_CHANCE:
+	if kind == "solenne" and not downed and randf() < counter_chance():
 		_counter(attacker)
+
+
+func counter_chance() -> float:
+	var c := 0.45 if has_mod("sol_counter_chance") else COUNTER_CHANCE
+	if _counter_boost_t > 0.0:
+		c *= 2.0
+	return minf(c, 1.0)
 
 
 func take_damage(amount: float) -> void:

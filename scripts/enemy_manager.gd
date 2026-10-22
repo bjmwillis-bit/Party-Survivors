@@ -32,7 +32,8 @@ var stun_t := PackedFloat32Array() # seconds left stunned
 var taunt_t := PackedFloat32Array() # seconds left taunted
 var taunt_hero := PackedByteArray() # which hero (index in the party) taunted them
 var atk_cd := PackedFloat32Array() # seconds until this enemy's next blow
-var slow_t := PackedFloat32Array() # seconds left at half speed
+var slow_t := PackedFloat32Array() # seconds left slowed
+var slow_amt := PackedFloat32Array() # how much slower (0.5 = half speed)
 var dot_t := PackedFloat32Array() # seconds left taking damage over time
 var dot_dmg := PackedFloat32Array() # damage per second-tick
 var dot_acc := PackedFloat32Array()
@@ -61,6 +62,7 @@ func _ready() -> void:
 	taunt_hero.resize(MAX_ENEMIES)
 	atk_cd.resize(MAX_ENEMIES)
 	slow_t.resize(MAX_ENEMIES)
+	slow_amt.resize(MAX_ENEMIES)
 	dot_t.resize(MAX_ENEMIES)
 	dot_dmg.resize(MAX_ENEMIES)
 	dot_acc.resize(MAX_ENEMIES)
@@ -175,11 +177,33 @@ func taunt_in_radius(center: Vector2, r: float, hero_index: int, seconds: float)
 		taunt_t[i] = seconds
 
 
+## Slows enemies by `amount` (0.5 = half speed) for `seconds`.
+func slow(i: int, amount: float, seconds: float) -> void:
+	if i < 0 or i >= count:
+		return
+	if slow_t[i] <= 0.0 or amount >= slow_amt[i]:
+		slow_amt[i] = amount
+	slow_t[i] = maxf(slow_t[i], seconds)
+
+
+func slow_in_radius(center: Vector2, r: float, amount: float, seconds: float) -> void:
+	for i in query(center, r):
+		slow(i, amount, seconds)
+
+
+## Drags enemies within `r` toward `center`.
+func pull(center: Vector2, r: float, strength: float) -> void:
+	for i in query(center, r):
+		var to: Vector2 = center - pos[i]
+		if to.length() > 0.8:
+			knock[i] += to.normalized() * strength
+
+
 ## Cenhelm's horn: slows everything in range, hurts them once a second,
 ## and nudges them away from `center`.
-func horn(center: Vector2, r: float, seconds: float, tick_damage: float, push: float) -> void:
+func horn(center: Vector2, r: float, seconds: float, tick_damage: float, push: float, slow_amount := 0.5) -> void:
 	for i in query(center, r):
-		slow_t[i] = maxf(slow_t[i], seconds)
+		slow(i, slow_amount, seconds)
 		dot_t[i] = seconds
 		dot_dmg[i] = tick_damage
 		dot_acc[i] = 0.0
@@ -219,6 +243,7 @@ func _remove_dead() -> void:
 			taunt_hero[i] = taunt_hero[last]
 			atk_cd[i] = atk_cd[last]
 			slow_t[i] = slow_t[last]
+			slow_amt[i] = slow_amt[last]
 			dot_t[i] = dot_t[last]
 			dot_dmg[i] = dot_dmg[last]
 			dot_acc[i] = dot_acc[last]
@@ -258,6 +283,7 @@ func _spawn(delta: float) -> void:
 		taunt_hero[count] = 0
 		atk_cd[count] = HIT_WINDUP
 		slow_t[count] = 0.0
+		slow_amt[count] = 0.0
 		dot_t[count] = 0.0
 		dot_dmg[count] = 0.0
 		dot_acc[count] = 0.0
@@ -318,7 +344,7 @@ func _move(delta: float) -> void:
 		elif dist > 0.6:
 			v = (hero_xz[best] - p) / dist * SPEED[kind[i]]
 			if slow_t[i] > 0.0:
-				v *= 0.5
+				v *= 1.0 - slow_amt[i]
 		if slow_t[i] > 0.0:
 			slow_t[i] -= delta
 		if dot_t[i] > 0.0:

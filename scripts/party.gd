@@ -28,13 +28,12 @@ var revive_time := 3.0
 
 var aim_point := Vector3.ZERO # where the leader is aiming, on the ground
 
-# Kheiron's grove: a healing circle on the ground.
-var grove_time := 0.0
-var grove_pos := Vector3.ZERO
-var grove_radius := 0.0
-var grove_heal := 0.0 # fraction of max health per second
-var _grove_disc: MeshInstance3D
-var _grove_mat: StandardMaterial3D
+# Groves: healing circles on the ground (Kheiron's E, and some cards).
+# Each is {pos, radius, time, heal (fraction of max health per second),
+# slow (enemy slow inside, 0 = none), disc, mat}.
+var groves: Array = []
+## Bond cards in play this run (id -> true). See upgrades.gd.
+var bonds := {}
 
 var _form_yaw := 0.0 # direction of the resting formation; turns smoothly
 var _wiped := false
@@ -55,7 +54,6 @@ func _ready() -> void:
 	swap_timer = 0.0
 	_reticle = _ground_ring(0.3, 0.42, Color(1.0, 0.9, 0.5, 0.9))
 	_leash_ring = _ground_ring(LEASH - 0.08, LEASH, Color(1.0, 1.0, 1.0, 0.12))
-	_build_grove_visual()
 
 
 func _input(event: InputEvent) -> void:
@@ -226,17 +224,19 @@ func _move_followers(delta: float) -> void:
 		var low: bool = h.hp / h.max_hp < RETREAT_BELOW
 		if h.returning:
 			spd *= 1.4
-		elif grove_time > 0.0:
+		elif not groves.is_empty():
 			# A grove is down: fight enemies inside it, otherwise stand in it.
-			var gxz := Vector2(grove_pos.x, grove_pos.z)
+			var g: Dictionary = _nearest_grove(h.position)
+			var gxz := Vector2(g["pos"].x, g["pos"].z)
+			var gr: float = g["radius"]
 			var e := -1
 			if not low and not h.is_healer():
-				e = Game.enemies.nearest_in_two_circles(hxz, lxz, LEASH, gxz, grove_radius)
+				e = Game.enemies.nearest_in_two_circles(hxz, lxz, LEASH, gxz, gr)
 			if e >= 0:
 				goal = Vector3(Game.enemies.pos[e].x, 0.0, Game.enemies.pos[e].y)
 				stop = h.engage_range()
-			elif hxz.distance_to(gxz) > grove_radius * 0.85:
-				goal = _grove_spot_near_leader(l)
+			elif hxz.distance_to(gxz) > gr * 0.85:
+				goal = _grove_spot_near_leader(l, g)
 				stop = 0.5
 			else:
 				goal = h.position
@@ -272,12 +272,24 @@ func _move_followers(delta: float) -> void:
 
 
 ## A spot inside the grove that is also inside the leash.
-func _grove_spot_near_leader(l) -> Vector3:
-	var to: Vector3 = grove_pos - l.position
+func _grove_spot_near_leader(l, g: Dictionary) -> Vector3:
+	var gp: Vector3 = g["pos"]
+	var to: Vector3 = gp - l.position
 	to.y = 0.0
 	if to.length() <= LEASH * 0.7:
-		return grove_pos
+		return gp
 	return l.position + to.normalized() * LEASH * 0.7
+
+
+func _nearest_grove(p: Vector3) -> Dictionary:
+	var best: Dictionary = groves[0]
+	var best_d := INF
+	for g in groves:
+		var d: float = p.distance_to(g["pos"])
+		if d < best_d:
+			best_d = d
+			best = g
+	return best
 
 
 ## Index of the enemy nearest to the follower, among enemies inside the leash.
@@ -383,48 +395,51 @@ func _tick_revive(delta: float) -> void:
 
 # --- Kheiron's grove ---------------------------------------------------------
 
-func place_grove(at: Vector3, radius: float, seconds: float, heal_per_second: float) -> void:
-	grove_pos = Vector3(at.x, 0.0, at.z)
-	grove_radius = radius
-	grove_time = seconds
-	grove_heal = heal_per_second
-	_grove_disc.position = Vector3(grove_pos.x, 0.03, grove_pos.z)
-	_grove_disc.scale = Vector3(radius, 1.0, radius)
-	_grove_disc.visible = true
-	Game.fx.ring(grove_pos, radius, Color(0.55, 0.95, 0.55), 0.4)
-
-
-func in_grove(p: Vector3) -> bool:
-	return grove_time > 0.0 and Vector2(p.x, p.z).distance_to(Vector2(grove_pos.x, grove_pos.z)) <= grove_radius
-
-
-func _tick_grove(delta: float) -> void:
-	if grove_time <= 0.0:
-		return
-	grove_time -= delta
-	for h in heroes:
-		if in_grove(h.position):
-			h.heal(h.max_hp * grove_heal * delta)
-	# Fade out over the last half second.
-	_grove_mat.albedo_color.a = 0.22 * clampf(grove_time / 0.5, 0.0, 1.0)
-	if grove_time <= 0.0:
-		_grove_disc.visible = false
-
-
-func _build_grove_visual() -> void:
+func place_grove(at: Vector3, radius: float, seconds: float, heal_per_second: float, slow := 0.0) -> void:
 	var disc := CylinderMesh.new()
 	disc.top_radius = 1.0
 	disc.bottom_radius = 1.0
 	disc.height = 0.02
 	disc.radial_segments = 48
 	disc.rings = 1
-	_grove_mat = Game.effect_material(Color(0.4, 0.9, 0.4, 0.22))
-	_grove_disc = MeshInstance3D.new()
-	_grove_disc.mesh = disc
-	_grove_disc.material_override = _grove_mat
-	_grove_disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_grove_disc.visible = false
-	add_child(_grove_disc)
+	var mat := Game.effect_material(Color(0.4, 0.9, 0.4, 0.22))
+	var node := MeshInstance3D.new()
+	node.mesh = disc
+	node.material_override = mat
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pos := Vector3(at.x, 0.0, at.z)
+	node.position = Vector3(pos.x, 0.03 + groves.size() * 0.002, pos.z)
+	node.scale = Vector3(radius, 1.0, radius)
+	add_child(node)
+	groves.append({"pos": pos, "radius": radius, "time": seconds, "heal": heal_per_second, "slow": slow, "disc": node, "mat": mat})
+	Game.fx.ring(pos, radius, Color(0.55, 0.95, 0.55), 0.4)
+
+
+func in_grove(p: Vector3) -> bool:
+	for g in groves:
+		if Vector2(p.x, p.z).distance_to(Vector2(g["pos"].x, g["pos"].z)) <= g["radius"]:
+			return true
+	return false
+
+
+func _tick_grove(delta: float) -> void:
+	var i := groves.size() - 1
+	while i >= 0:
+		var g: Dictionary = groves[i]
+		g["time"] -= delta
+		var gp: Vector3 = g["pos"]
+		var gxz := Vector2(gp.x, gp.z)
+		for h in heroes:
+			if Vector2(h.position.x, h.position.z).distance_to(gxz) <= g["radius"]:
+				h.heal(h.max_hp * g["heal"] * delta)
+		if g["slow"] > 0.0:
+			Game.enemies.slow_in_radius(gxz, g["radius"], g["slow"], 0.25)
+		# Fade out over the last half second.
+		g["mat"].albedo_color.a = 0.22 * clampf(g["time"] / 0.5, 0.0, 1.0)
+		if g["time"] <= 0.0:
+			g["disc"].queue_free()
+			groves.remove_at(i)
+		i -= 1
 
 
 # --- Helpers -----------------------------------------------------------------

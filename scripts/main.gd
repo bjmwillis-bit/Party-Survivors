@@ -21,6 +21,7 @@ var xp_need := 5
 var pending_levels := 0
 var choosing := false
 var current_choices: Array = []
+var choice_level := 0 # the level the current cards are for
 var ended := false
 var upgrades
 
@@ -80,18 +81,54 @@ func gain_xp(amount: int) -> void:
 
 
 func _open_levelup() -> void:
-	current_choices = upgrades.roll(3)
+	choice_level = level - pending_levels + 1
+	current_choices = upgrades.roll(3, choice_level)
 	if current_choices.is_empty():
 		pending_levels = 0
 		return
 	choosing = true
 	get_tree().paused = true
-	Game.hud.show_levelup(level, current_choices)
+	Game.hud.show_levelup(choice_level, current_choices, upgrades.is_ult_level(choice_level))
+
+
+func reroll_cards() -> void:
+	if not choosing or upgrades.rerolls_left <= 0:
+		return
+	var fresh: Array = upgrades.roll(3, choice_level, _choice_ids())
+	if fresh.is_empty():
+		return
+	upgrades.rerolls_left -= 1
+	current_choices = fresh
+	Game.hud.show_levelup(choice_level, current_choices, upgrades.is_ult_level(choice_level))
+
+
+## Removes a card from this run for good, and deals a new one in its place.
+func banish_card(index: int) -> void:
+	if not choosing or upgrades.banishes_left <= 0 or index < 0 or index >= current_choices.size():
+		return
+	if current_choices[index] == null:
+		return
+	upgrades.banish(current_choices[index])
+	var fresh: Array = upgrades.roll(1, choice_level, _choice_ids())
+	current_choices[index] = fresh[0] if not fresh.is_empty() else null
+	Game.hud.replace_card(index, current_choices[index])
+
+
+func _choice_ids() -> Array:
+	var ids: Array = []
+	for c in current_choices:
+		if c != null:
+			ids.append(c["id"])
+	return ids
 
 
 func choose_upgrade(index: int) -> void:
 	if not choosing or index < 0 or index >= current_choices.size():
 		return
+	if current_choices[index] == null:
+		return
+	if not autopilot and not Game.hud.card_ready(index):
+		return # wait for the card's reveal to finish
 	upgrades.apply(current_choices[index])
 	pending_levels -= 1
 	choosing = false

@@ -120,8 +120,12 @@ func _process(_delta: float) -> void:
 	if _levelup.visible:
 		for k in 3:
 			if Input.is_action_just_pressed("pick_%d" % (k + 1)):
-				main.choose_upgrade(k)
+				_on_card_picked(k)
 				break
+		if Input.is_action_just_pressed("reroll"):
+			main.reroll_cards()
+		if Input.is_action_just_pressed("banish"):
+			_toggle_banish()
 	elif _end.visible and Input.is_action_just_pressed("restart"):
 		main.restart()
 
@@ -186,47 +190,112 @@ func _update_skill_bar() -> void:
 
 # --- Level up ----------------------------------------------------------------
 
-func show_levelup(level: int, choices: Array) -> void:
-	_levelup_title.text = "Level %d — choose one" % level
-	for i in _cards.size():
-		var b: Button = _cards[i]
-		if i < choices.size():
-			var c: Dictionary = choices[i]
-			b.text = "[%d]  %s\n%s\n\n%s" % [i + 1, c["hero"], c["title"], c["desc"]]
-			b.visible = true
-		else:
-			b.visible = false
+const CardScript := preload("res://scripts/card_view.gd")
+
+var _row: HBoxContainer
+var _reroll_btn: Button
+var _banish_btn: Button
+var _levelup_hint: Label
+var _banish_mode := false
+
+
+func show_levelup(level: int, choices: Array, ult_level: bool) -> void:
+	if ult_level:
+		_levelup_title.text = "Level %d  —  ULTIMATE UPGRADE" % level
+		_levelup_title.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
+	else:
+		_levelup_title.text = "Level %d  —  choose one" % level
+		_levelup_title.add_theme_color_override("font_color", Color.WHITE)
+	for c in _cards:
+		c.queue_free()
+	_cards.clear()
+	for i in choices.size():
+		_add_card(i, choices[i])
+	_banish_mode = false
+	_update_levelup_buttons()
 	_levelup.visible = true
-	_cards[0].grab_focus()
+
+
+## Swaps one card for a new one (after a banish), replaying its reveal.
+func replace_card(i: int, card) -> void:
+	if i < 0 or i >= _cards.size():
+		return
+	if card == null:
+		_cards[i].visible = false
+		return
+	_cards[i].setup(i, card)
+	_banish_mode = false
+	_update_levelup_buttons()
+
+
+func card_ready(i: int) -> bool:
+	return i >= 0 and i < _cards.size() and _cards[i].visible and _cards[i].revealed
 
 
 func hide_levelup() -> void:
 	_levelup.visible = false
 
 
+func _add_card(i: int, data: Dictionary) -> void:
+	var c = CardScript.new()
+	_row.add_child(c)
+	c.setup(i, data)
+	c.picked.connect(_on_card_picked)
+	_cards.append(c)
+
+
+func _on_card_picked(i: int) -> void:
+	if _banish_mode:
+		Game.main.banish_card(i)
+	else:
+		Game.main.choose_upgrade(i)
+
+
+func _update_levelup_buttons() -> void:
+	var u = Game.main.upgrades
+	_reroll_btn.text = "Reroll  (%d)  [F]" % u.rerolls_left
+	_reroll_btn.disabled = u.rerolls_left <= 0
+	_banish_btn.text = ("Click a card to banish it" if _banish_mode else "Banish  (%d)  [B]" % u.banishes_left)
+	_banish_btn.disabled = u.banishes_left <= 0
+	_levelup_hint.text = "Banished cards won't appear again this run." if _banish_mode else ""
+
+
 func _build_levelup(root: Control) -> void:
 	_levelup = _overlay(root)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 24)
+	box.add_theme_constant_override("separation", 26)
 	_levelup.get_child(1).add_child(box)
 	_levelup_title = _label(40)
 	_levelup_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_levelup_title)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 24)
-	box.add_child(row)
-	for i in 3:
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(340, 200)
-		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		b.add_theme_font_size_override("font_size", 22)
-		b.pressed.connect(_on_card_pressed.bind(i))
-		row.add_child(b)
-		_cards.append(b)
+	_row = HBoxContainer.new()
+	_row.add_theme_constant_override("separation", 30)
+	_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(_row)
+	var buttons := HBoxContainer.new()
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons.add_theme_constant_override("separation", 20)
+	box.add_child(buttons)
+	_reroll_btn = Button.new()
+	_reroll_btn.custom_minimum_size = Vector2(260, 52)
+	_reroll_btn.add_theme_font_size_override("font_size", 22)
+	_reroll_btn.pressed.connect(func() -> void: Game.main.reroll_cards())
+	buttons.add_child(_reroll_btn)
+	_banish_btn = Button.new()
+	_banish_btn.custom_minimum_size = Vector2(300, 52)
+	_banish_btn.add_theme_font_size_override("font_size", 22)
+	_banish_btn.pressed.connect(_toggle_banish)
+	buttons.add_child(_banish_btn)
+	_levelup_hint = _label(18)
+	_levelup_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_levelup_hint)
 
 
-func _on_card_pressed(i: int) -> void:
-	Game.main.choose_upgrade(i)
+func _toggle_banish() -> void:
+	if Game.main.upgrades.banishes_left <= 0:
+		return
+	_banish_mode = not _banish_mode
+	_update_levelup_buttons()
 
 
 # --- End of run --------------------------------------------------------------

@@ -10,6 +10,7 @@ var _frames := 0
 var _last_us := 0
 var _frame_ms: Array[float] = []
 var _peak_enemies := 0
+var _levelups := 0
 
 
 func _initialize() -> void:
@@ -25,6 +26,9 @@ func _process(_delta: float) -> bool:
 
 	var main = current_scene
 	if main == null or not main.has_method("choose_upgrade"):
+		if _frames > 300:
+			print("RESULT: FAILED - the main scene did not load (see script errors above)")
+			return true
 		return false
 	var game = root.get_node("Game")
 	if game.party == null:
@@ -38,6 +42,12 @@ func _process(_delta: float) -> bool:
 	else:
 		main.autopilot_dir = Vector3.ZERO
 	if main.choosing:
+		_levelups += 1
+		# Exercise reroll and banish now and then.
+		if _levelups % 7 == 0:
+			main.reroll_cards()
+		if _levelups % 9 == 0:
+			main.banish_card(1)
 		main.choose_upgrade(0)
 	if _frames % 240 == 0:
 		game.party.swap()
@@ -73,4 +83,10 @@ func _report(main, game) -> void:
 		int(game.time_alive), game.kills, main.level, _peak_enemies])
 	for h in game.party.heroes:
 		print("SKILLS %s: Q x%d, E x%d, R x%d, counters x%d" % [h.hero_name, h.stats["q"], h.stats["e"], h.stats["r"], h.stats["counter"]])
+	var u = main.upgrades
+	var picks: Array = []
+	for id in u.taken:
+		picks.append("%s x%d" % [id, u.taken[id]])
+	print("CARDS: ", ", ".join(picks))
+	print("BONDS: ", game.party.bonds.keys(), "  banished: ", u.banished.keys(), "  rerolls left: ", u.rerolls_left, "  banishes left: ", u.banishes_left)
 	print("FRAME (script cost, no rendering): avg %.2f ms, 99th percentile %.2f ms" % [avg, p99])

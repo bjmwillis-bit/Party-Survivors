@@ -6,6 +6,7 @@ const BOLT_SPEED := 20.0
 const MAX_PUFFS_PER_FRAME := 10
 
 var _bolts: Array = []
+var _zones: Array = []
 var _sector_cache := {}
 var _box: BoxMesh
 var _ring: TorusMesh
@@ -33,6 +34,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_puffs_this_frame = 0
 	_update_bolts(delta)
+	_update_zones(delta)
 
 
 # --- Effects -----------------------------------------------------------------
@@ -82,8 +84,9 @@ func death_puff(origin: Vector3, color: Color) -> void:
 	_temp(_box, Color(color.r, color.g, color.b, 0.9), origin, 0.25, Vector3.ONE * 1.5, Vector3.ONE * 3.0, 0.5)
 
 
-## Kheiron's bolt. Flies straight and damages the first enemy it touches.
-func bolt(start: Vector3, dir: Vector2, dmg: float, pierce: int, color: Color) -> void:
+## A projectile (Kheiron's bolts, Solenne's flame waves). Flies straight and
+## damages enemies it touches, passing through `pierce` of them.
+func bolt(start: Vector3, dir: Vector2, dmg: float, pierce: int, color: Color, speed := BOLT_SPEED, size := 1.0, life := 1.0) -> void:
 	var mat = _bolt_mats.get(color)
 	if mat == null:
 		mat = Game.material(color, 2.0)
@@ -93,11 +96,33 @@ func bolt(start: Vector3, dir: Vector2, dmg: float, pierce: int, color: Color) -
 	n.material_override = mat
 	n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	n.position = start
+	n.scale = Vector3.ONE * size
 	add_child(n)
 	_bolts.append({
-		"node": n, "pos": Vector2(start.x, start.z), "dir": dir,
-		"dmg": dmg, "pierce": pierce, "life": 1.0, "hit": {},
+		"node": n, "pos": Vector2(start.x, start.z), "dir": dir, "speed": speed, "radius": 0.55 * size,
+		"dmg": dmg, "pierce": pierce, "life": life, "hit": {}, "y": start.y,
 	})
+
+
+## Burning ground along a line (Solenne's Scorched Path). Damages enemies
+## standing on it a few times a second.
+func fire_line(a: Vector3, b: Vector3, width: float, seconds: float, dps: float) -> void:
+	var length := Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z))
+	if length < 0.1:
+		return
+	var box := BoxMesh.new()
+	box.size = Vector3(width * 2.0, 0.05, length)
+	var mat := Game.effect_material(Color(1.0, 0.45, 0.1, 0.55))
+	var n := MeshInstance3D.new()
+	n.mesh = box
+	n.material_override = mat
+	n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mid := (a + b) * 0.5
+	n.position = Vector3(mid.x, 0.05, mid.z)
+	n.rotation.y = atan2(b.x - a.x, b.z - a.z)
+	add_child(n)
+	_zones.append({"node": n, "mat": mat, "a": Vector2(a.x, a.z), "b": Vector2(b.x, b.z),
+		"width": width, "time": seconds, "dps": dps, "tick": 0.0})
 
 
 func _update_bolts(delta: float) -> void:
@@ -105,13 +130,13 @@ func _update_bolts(delta: float) -> void:
 	while i >= 0:
 		var b: Dictionary = _bolts[i]
 		b["life"] -= delta
-		var p: Vector2 = b["pos"] + b["dir"] * BOLT_SPEED * delta
+		var p: Vector2 = b["pos"] + b["dir"] * b["speed"] * delta
 		b["pos"] = p
 		var n: MeshInstance3D = b["node"]
-		n.position = Vector3(p.x, 1.0, p.y)
+		n.position = Vector3(p.x, b["y"], p.y)
 		var done: bool = b["life"] <= 0.0
 		if not done:
-			for e in Game.enemies.query(p, 0.55):
+			for e in Game.enemies.query(p, b["radius"]):
 				if b["hit"].has(e):
 					continue
 				b["hit"][e] = true
@@ -124,6 +149,37 @@ func _update_bolts(delta: float) -> void:
 			n.queue_free()
 			_bolts.remove_at(i)
 		i -= 1
+
+
+func _update_zones(delta: float) -> void:
+	var i := _zones.size() - 1
+	while i >= 0:
+		var z: Dictionary = _zones[i]
+		z["time"] -= delta
+		z["tick"] += delta
+		if z["tick"] >= 0.25:
+			z["tick"] -= 0.25
+			var a: Vector2 = z["a"]
+			var b: Vector2 = z["b"]
+			var mid := (a + b) * 0.5
+			var width: float = z["width"]
+			var reach: float = a.distance_to(b) * 0.5 + width
+			for e in Game.enemies.query(mid, reach):
+				var p: Vector2 = Game.enemies.pos[e]
+				if _distance_to_segment(p, a, b) <= width:
+					Game.enemies.damage(e, z["dps"] * 0.25, Vector2.ZERO, 0.0)
+		var flicker := 0.45 + 0.15 * sin(Time.get_ticks_msec() * 0.02 + i)
+		z["mat"].albedo_color.a = flicker * clampf(z["time"] / 0.5, 0.0, 1.0)
+		if z["time"] <= 0.0:
+			z["node"].queue_free()
+			_zones.remove_at(i)
+		i -= 1
+
+
+static func _distance_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+	return p.distance_to(a + ab * t)
 
 
 # --- Helpers -----------------------------------------------------------------
