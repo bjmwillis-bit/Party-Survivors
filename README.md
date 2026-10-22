@@ -17,9 +17,10 @@ This is **milestone 1**: a grey-box prototype to answer one question — is stee
 | Move | WASD or arrow keys | Left stick |
 | Aim (the leader faces it) | Mouse | Right stick |
 | Leader's skills | Q / E | Left bumper / left trigger |
+| Leader's ultimate | R | Right trigger |
 | Swap leader | Space or Shift | A or right bumper |
 | Pick a level-up card | 1 / 2 / 3 or click | X / Y / B |
-| Restart after a run | R | Start |
+| Restart after a run | Enter | Start |
 
 Fallen heroes get back up if the leader stands next to them for 3 seconds.
 
@@ -34,21 +35,26 @@ Tuning numbers live at the top of `scripts/party.gd` (`LEASH`, `HEAL_SEEK_BELOW`
 
 ## The heroes (grey-box versions)
 
-Basic attacks fire on their own at each hero's attack speed. The leader's Q and E are yours to cast; followers cast theirs the moment they're ready and would do something.
+Basic attacks fire on their own at each hero's attack speed. The leader's Q, E and R are yours to cast. Followers cast Q and E the moment they'd do something; **only the leader can use an ultimate**, so swap a hero in to use theirs. Ultimates start each run half charged.
+
+Enemies strike in distinct blows (once a second each, after a short wind-up).
 
 **Solenne**: slashes in an arc. Gains Contempt when struck (+5% damage per stack).
-- Q, *I'll Give You My Back* (passive): 30% chance when struck to counter with a skewer that pierces up to 4 enemies.
+- Q, *I'll Give You My Back* (passive): every blow she takes has a 30% chance to trigger a counter-skewer at the attacker, piercing up to 4 enemies. No cap.
 - E, *Face Me* (16 s): taunts enemies within 6 m for 6 s, and she takes 40% less damage.
+- R, *Ultrix* (45 s): a slash as she steps back 1 m, then an 8 m lunge where you aim (3x her basic damage to everything she passes). Untouchable throughout.
 
 **Cenhelm**: left-right punches, each splashing where it lands. Damage scales with his max HP. Takes 25% of hits aimed at his allies.
 - Q, *The Gate* (10 s): ground slam around him. Every punch takes 1 s off the cooldown.
-- E, *Walk Out* (12 s): dashes to an ally (the one nearest your aim when you lead him), stunning enemies on the way for 1.5 s.
+- E, *Walk Out* (12 s): dashes to the lowest-health ally in the leash, stunning enemies on the way and where he lands for 1.5 s.
+- R, *The Horn* (40 s): everything within 16 m is slowed by half for 6 s, takes a little damage each second, and is pushed back slightly.
 
-**Kheiron**: fires bolts. Incurable: nothing heals him.
-- Q, *Lesson* (4 s): heals the most hurt ally for 10% of their max health.
-- E, *The Grove* (14 s): a leash-sized grove at his feet for 4 s; allies inside heal 3% of max health per second. Followers fight inside it and stand in it.
+**Kheiron**: fires bolts.
+- Q, *Lesson* (4 s): heals the lowest-health ally (never himself) for 5% of their max health.
+- E, *The Grove* (14 s): a leash-sized grove at his feet for 4 s; allies inside heal 1.5% of max health per second. Followers fight inside it and stand in it.
+- R, *Give the Sky* (60 s): pays 20% of his max health (never below 1) to reset the other heroes' ultimates. Combo: Kheiron R, swap, Solenne R, swap, Cenhelm R.
 
-The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst. Ultimates come later.
+The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst.
 
 ## Project layout
 
@@ -57,6 +63,6 @@ The leader deals 20% more damage. Swapping has a 1-second cooldown and a small e
 - `tests/smoke_test.gd`: a bot that plays a full run without a window and reports how it went. Run it with:
   `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd`
 
-## Next: milestone 2
+## Next
 
-Ultimates that fire when a hero swaps in, more enemy types, an elite, the boss at 12 minutes, and real skill-upgrade cards.
+More enemy types, an elite, the boss at 12 minutes, and real skill-upgrade cards.

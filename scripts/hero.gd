@@ -2,22 +2,27 @@ extends Node3D
 ## One party member: stats, basic attack, two skills (Q and E), health,
 ## and the crisp grey-box look (step bob, dust, hit flash, attack lunge).
 ##
-## The leader's Q and E are cast by the player. Followers cast theirs the
-## moment they're ready and would do something.
+## The leader's Q, E and R (ultimate) are cast by the player. Followers cast
+## Q and E the moment they'd do something; only the leader can use an ultimate.
 ##
 ## Grey-box kits:
 ## - Solenne: slashes in an arc. Gains Contempt when struck (+5% damage each).
-##   Q (passive) I'll Give You My Back: 30% chance when struck to counter
-##   with a skewer that pierces up to 4 enemies.
+##   Q (passive) I'll Give You My Back: every blow she takes has a 30% chance
+##   to trigger a counter-skewer at the attacker, piercing up to 4 enemies.
 ##   E Face Me: taunts enemies within 6 m for 6 s and takes 40% less damage.
+##   R Ultrix: a backstep slash, then an 8 m lunge. Untouchable throughout.
 ## - Cenhelm: left-right punches, each with a small splash where it lands.
 ##   Damage scales with max HP. Takes 25% of hits aimed at allies.
 ##   Q The Gate: ground slam around him. Each punch takes 1 s off its cooldown.
-##   E Walk Out: dashes to an ally (the one nearest your aim when leading),
-##   stunning and hurting enemies along the way.
-## - Kheiron: fires bolts. Incurable: nothing heals him.
-##   Q Lesson: heals the most hurt ally for 10% of their max health.
+##   E Walk Out: dashes to the lowest-health ally, stunning enemies on the way
+##   and where he lands.
+##   R The Horn: everything within 16 m is slowed by half for 6 s, takes a
+##   little damage each second, and is pushed back slightly.
+## - Kheiron: fires bolts.
+##   Q Lesson: heals the lowest-health ally (never himself) for 5% max health.
 ##   E The Grove: a healing grove at his feet, the size of the leash, for 4 s.
+##   R Give the Sky: pays 20% of his max health to reset the other heroes'
+##   ultimates.
 
 const DATA := {
 	"solenne": {
@@ -25,24 +30,26 @@ const DATA := {
 		"color": Color(0.92, 0.9, 0.86), "accent": Color(0.78, 0.12, 0.12),
 		"q": {"name": "I'll Give You My Back", "cd": 0.0, "passive": true},
 		"e": {"name": "Face Me", "cd": 16.0},
+		"r": {"name": "Ultrix", "cd": 45.0},
 	},
 	"cenhelm": {
 		"name": "Cenhelm", "hp": 190.0, "interval": 0.55, "damage": 5.0,
 		"color": Color(0.45, 0.36, 0.28), "accent": Color(0.95, 0.6, 0.15),
 		"q": {"name": "The Gate", "cd": 10.0},
 		"e": {"name": "Walk Out", "cd": 12.0},
+		"r": {"name": "The Horn", "cd": 40.0},
 	},
 	"kheiron": {
 		"name": "Kheiron", "hp": 95.0, "interval": 0.9, "damage": 9.0,
 		"color": Color(0.32, 0.42, 0.3), "accent": Color(0.55, 0.95, 0.55),
 		"q": {"name": "Lesson", "cd": 4.0},
 		"e": {"name": "The Grove", "cd": 14.0},
+		"r": {"name": "Give the Sky", "cd": 60.0},
 	},
 }
 
 # Skill numbers (easy to tune).
-const COUNTER_CHANCE := 0.3
-const COUNTER_ROLL_GAP := 0.4 # at most one counter roll this often
+const COUNTER_CHANCE := 0.3 # rolled separately for every blow she takes
 const COUNTER_MAX_TARGETS := 4
 const TAUNT_RADIUS := 6.0
 const TAUNT_TIME := 6.0
@@ -52,9 +59,20 @@ const FIST_SPLASH := 1.1
 const SLAM_RADIUS := 3.5
 const DASH_TIME := 0.22
 const DASH_STUN := 1.5
-const LESSON_HEAL := 0.10 # fraction of the target's max health
+const DASH_LAND_RADIUS := 2.0
+const LESSON_HEAL := 0.05 # fraction of the target's max health
 const GROVE_TIME := 4.0
-const GROVE_HEAL := 0.03 # fraction of max health per second
+const GROVE_HEAL := 0.015 # fraction of max health per second
+const ULTRIX_BACKSTEP := 1.0
+const ULTRIX_LUNGE := 8.0
+const ULTRIX_SLASH_MULT := 1.0 # times her basic attack damage
+const ULTRIX_LUNGE_MULT := 3.0
+const HORN_RADIUS := 16.0 # twice the leash
+const HORN_TIME := 6.0
+const HORN_TICK_MULT := 0.25 # damage each second, times his punch damage
+const HORN_PUSH := 3.0
+const SKY_COST := 0.2 # fraction of his max health
+const ULT_START_CHARGE := 0.5 # ultimates start the run half charged
 
 var kind := ""
 var hero_name := ""
@@ -84,20 +102,26 @@ var move_dir := Vector3.ZERO
 var moving := false
 var aim_dir := Vector2.ZERO # where the player aims (used while leading)
 var returning := false # a follower running back inside the leash
-var dashing := false
-var cooldown := {"q": 0.0, "e": 0.0} # seconds left
+var dashing := false # busy moving under a skill's control (dash, lunge)
+var invulnerable := false
+var cooldown := {"q": 0.0, "e": 0.0, "r": 0.0} # seconds left
 ## How often each skill went off this run (for tuning and tests).
-var stats := {"q": 0, "e": 0, "counter": 0}
+var stats := {"q": 0, "e": 0, "r": 0, "counter": 0}
 
 var _attack_timer := 0.4
 var _taunt_time := 0.0
-var _counter_gap := 0.0
 var _punch_side := 1.0
 var _twist := 0.0
 var _dash_from := Vector3.ZERO
 var _dash_to := Vector3.ZERO
 var _dash_t := 0.0
 var _dash_hit := {}
+var _ult_phase := 0 # Ultrix: 0 idle, 1 backstep, 2 lunge
+var _ult_t := 0.0
+var _ult_dir := Vector2.ZERO
+var _ult_from := Vector3.ZERO
+var _ult_to := Vector3.ZERO
+var _ult_hit := {}
 var _contempt_hit_cd := 0.0
 var _contempt_decay := 0.0
 var _flash := 0.0
@@ -122,6 +146,7 @@ func setup(hero_kind: String) -> void:
 	hp = max_hp
 	base_damage = d["damage"]
 	attack_interval = d["interval"]
+	cooldown["r"] = d["r"]["cd"] * ULT_START_CHARGE
 	_build_visual()
 	_taunt_ring = _flat_ring(0.95, 1.1, Color(accent.r, accent.g, accent.b, 0.7))
 	_taunt_ring.visible = false
@@ -132,7 +157,6 @@ func _process(delta: float) -> void:
 	_hurt_flash_cd = maxf(0.0, _hurt_flash_cd - delta)
 	face_lock = maxf(0.0, face_lock - delta)
 	_taunt_time = maxf(0.0, _taunt_time - delta)
-	_counter_gap = maxf(0.0, _counter_gap - delta)
 	for slot in cooldown:
 		cooldown[slot] = maxf(0.0, cooldown[slot] - delta)
 	if _flash > 0.0:
@@ -154,7 +178,9 @@ func _process(delta: float) -> void:
 		return
 	_body.rotation.x = lerpf(_body.rotation.x, 0.0, 1.0 - exp(-12.0 * delta))
 
-	if dashing:
+	if _ult_phase > 0:
+		_tick_ultrix(delta)
+	elif dashing:
 		_tick_dash(delta)
 
 	# Snap to face the new direction almost instantly.
@@ -336,6 +362,8 @@ func skill_is_passive(slot: String) -> bool:
 func cast(slot: String) -> bool:
 	if downed or dashing or skill_is_passive(slot) or cooldown[slot] > 0.0:
 		return false
+	if slot == "r" and not is_leader:
+		return false # only the leader can use an ultimate
 	var done := false
 	match kind + "_" + slot:
 		"solenne_e":
@@ -348,6 +376,12 @@ func cast(slot: String) -> bool:
 			done = _lesson()
 		"kheiron_e":
 			done = _the_grove()
+		"solenne_r":
+			done = _ultrix()
+		"cenhelm_r":
+			done = _the_horn()
+		"kheiron_r":
+			done = _give_the_sky()
 	if done:
 		cooldown[slot] = DATA[kind][slot]["cd"]
 		stats[slot] += 1
@@ -403,7 +437,8 @@ func _the_gate() -> bool:
 	return true
 
 
-## Cenhelm E: dash to an ally, stunning enemies along the way.
+## Cenhelm E: dash to the lowest-health ally, stunning enemies on the way
+## and around where he lands. Even a short hop is worth it for the landing.
 func _walk_out() -> bool:
 	var ally = _dash_target()
 	if ally == null:
@@ -412,30 +447,33 @@ func _walk_out() -> bool:
 	to.y = 0.0
 	var d := to.length()
 	_dash_from = position
-	_dash_to = position + to / d * maxf(0.0, d - 1.0)
+	_dash_to = position
+	if d > 0.01:
+		_dash_to = position + to / d * maxf(0.0, d - 1.0)
+		facing = atan2(to.x, to.z)
 	_dash_t = 0.0
 	_dash_hit = {}
 	dashing = true
-	facing = atan2(to.x, to.z)
 	face_lock = DASH_TIME + 0.1
 	return true
 
 
-## Who Cenhelm would dash to. Leading: the ally nearest the aim point.
-## Following: the nearest ally. Must be at least 2 m away to be worth it.
+## Who Cenhelm dashes to: the living ally with the lowest health percentage
+## inside the leash. Ties go to the nearest.
 func _dash_target():
 	var best = null
+	var best_frac := INF
 	var best_d := INF
-	var from := position
-	if is_leader:
-		from = Game.party.aim_point
+	var l = Game.party.leader()
 	for h in Game.party.heroes:
 		if h == self or h.downed:
 			continue
-		if position.distance_to(h.position) < 2.0:
+		if l != null and h.position.distance_to(l.position) > Game.party.LEASH:
 			continue
-		var d: float = from.distance_to(h.position)
-		if d < best_d:
+		var frac: float = h.hp / h.max_hp
+		var d: float = position.distance_to(h.position)
+		if frac < best_frac - 0.001 or (absf(frac - best_frac) <= 0.001 and d < best_d):
+			best_frac = frac
 			best_d = d
 			best = h
 	return best
@@ -458,9 +496,17 @@ func _tick_dash(delta: float) -> void:
 	Game.fx.dust(position)
 	if t >= 1.0:
 		dashing = false
-		Game.fx.ring(position, 1.8, accent, 0.2)
+		# The landing: same damage and stun in a small circle.
+		var land := DASH_LAND_RADIUS * area_mult
+		for i in Game.enemies.query(me, land):
+			Game.enemies.stun(i, DASH_STUN)
+			var rel: Vector2 = Game.enemies.pos[i] - me
+			var push := rel.normalized() if rel.length() > 0.05 else Vector2.UP
+			Game.enemies.damage(i, dmg, push, 7.0)
+		Game.fx.ring(position, land, accent, 0.22)
+		Game.fx.ring(position, land * 0.5, Color.WHITE, 0.15)
 		if is_leader:
-			Game.add_shake(0.2)
+			Game.add_shake(0.25)
 
 
 ## Kheiron Q: heal the most hurt ally.
@@ -481,6 +527,101 @@ func _the_grove() -> bool:
 	return true
 
 
+# --- Ultimates (R, leader only) ----------------------------------------------
+
+## Solenne R: a slash as she steps back, then a long lunge where you aim.
+func _ultrix() -> bool:
+	_ult_dir = aim_dir if aim_dir != Vector2.ZERO else Vector2(sin(facing), cos(facing))
+	var me := _my_xz()
+	var half := deg_to_rad(65.0)
+	var reach := 3.0 * area_mult
+	var dmg := _power() * ULTRIX_SLASH_MULT
+	for i in Game.enemies.query(me, reach):
+		var rel: Vector2 = Game.enemies.pos[i] - me
+		if rel.length() > 0.001 and absf(_ult_dir.angle_to(rel)) > half:
+			continue
+		Game.enemies.damage(i, dmg, rel.normalized(), 8.0)
+	var yaw := atan2(_ult_dir.x, _ult_dir.y)
+	Game.fx.slash(position, yaw, reach, half, accent)
+	facing = yaw
+	face_lock = 0.6
+	_ult_from = position
+	_ult_to = position - Vector3(_ult_dir.x, 0.0, _ult_dir.y) * ULTRIX_BACKSTEP
+	_ult_phase = 1
+	_ult_t = 0.0
+	_ult_hit = {}
+	dashing = true
+	invulnerable = true
+	return true
+
+
+func _tick_ultrix(delta: float) -> void:
+	_ult_t += delta
+	var a: float = Game.main.ARENA_HALF
+	if _ult_phase == 1:
+		# Backstep, then a beat before the lunge.
+		position = _ult_from.lerp(_ult_to, minf(1.0, _ult_t / 0.12))
+		if _ult_t >= 0.22:
+			_ult_phase = 2
+			_ult_t = 0.0
+			_ult_from = position
+			var end := position + Vector3(_ult_dir.x, 0.0, _ult_dir.y) * ULTRIX_LUNGE
+			end.x = clampf(end.x, -a, a)
+			end.z = clampf(end.z, -a, a)
+			_ult_to = end
+			Game.fx.thrust(position, facing, ULTRIX_LUNGE, Color(1.0, 0.15, 0.1))
+			if is_leader:
+				Game.hitstop(0.05)
+				Game.add_shake(0.35)
+		return
+	# Lunge: everything she passes through takes the heavy hit.
+	var t := minf(1.0, _ult_t / 0.18)
+	position = _ult_from.lerp(_ult_to, t)
+	var me := _my_xz()
+	var dmg := _power() * ULTRIX_LUNGE_MULT
+	for i in Game.enemies.query(me, 1.3):
+		if _ult_hit.has(i):
+			continue
+		_ult_hit[i] = true
+		Game.enemies.damage(i, dmg, _ult_dir, 10.0)
+	_lunge = 1.0
+	if t >= 1.0:
+		_ult_phase = 0
+		dashing = false
+		invulnerable = false
+		Game.fx.ring(position, 2.0, Color(1.0, 0.15, 0.1), 0.2)
+
+
+## Cenhelm R: blows the horn.
+func _the_horn() -> bool:
+	var tick := (base_damage * damage_mult + max_hp * 0.035) * HORN_TICK_MULT
+	Game.enemies.horn(_my_xz(), HORN_RADIUS, HORN_TIME, tick, HORN_PUSH)
+	Game.fx.ring(position, HORN_RADIUS, accent, 0.6)
+	Game.fx.ring(position, HORN_RADIUS * 0.5, accent, 0.45)
+	Game.fx.ring(position, 3.0, Color.WHITE, 0.3)
+	_lunge = 0.8
+	if is_leader:
+		Game.add_shake(0.4)
+		Game.hitstop(0.06)
+	return true
+
+
+## Kheiron R: pays health to reset the other heroes' ultimates.
+func _give_the_sky() -> bool:
+	hp = maxf(1.0, hp - max_hp * SKY_COST)
+	_flash = 0.12
+	for h in Game.party.heroes:
+		if h == self:
+			continue
+		h.cooldown["r"] = 0.0
+		if not h.downed:
+			Game.fx.ring(h.position, 1.4, accent, 0.4)
+	Game.fx.ring(position, 2.5, accent, 0.45)
+	if is_leader:
+		Game.add_shake(0.2)
+	return true
+
+
 # --- Passives ----------------------------------------------------------------
 
 func _tick_passives(delta: float) -> void:
@@ -493,15 +634,18 @@ func _tick_passives(delta: float) -> void:
 				_contempt_decay = 3.0
 
 
-## Solenne's counter: a straight skewer toward the nearest enemy that
-## pierces up to a few enemies in a line. Same reach and damage as her cut.
-func _counter() -> void:
+## Solenne's counter: a straight skewer at the enemy who struck her,
+## piercing up to a few enemies in a line. Same reach and damage as her cut.
+func _counter(attacker: int) -> void:
 	var me := _my_xz()
 	var reach := 3.0 * area_mult
-	var target: int = Game.enemies.nearest(me, reach + 1.0)
+	var target := attacker
+	if target < 0 or target >= Game.enemies.count or Game.enemies.hp[target] <= 0.0:
+		target = Game.enemies.nearest(me, reach + 1.0)
 	if target < 0:
 		return
-	var dir: Vector2 = (Game.enemies.pos[target] - me).normalized()
+	var rel_t: Vector2 = Game.enemies.pos[target] - me
+	var dir: Vector2 = rel_t.normalized() if rel_t.length() > 0.01 else Vector2(sin(facing), cos(facing))
 	var line: Array = []
 	for i in Game.enemies.query(me, reach):
 		var rel: Vector2 = Game.enemies.pos[i] - me
@@ -522,8 +666,17 @@ func _counter() -> void:
 
 # --- Health ------------------------------------------------------------------
 
+## A blow from an enemy. For Solenne, every blow rolls its own counter.
+func take_hit(amount: float, attacker: int) -> void:
+	if downed or invulnerable:
+		return
+	take_damage(amount)
+	if kind == "solenne" and not downed and randf() < COUNTER_CHANCE:
+		_counter(attacker)
+
+
 func take_damage(amount: float) -> void:
-	if downed:
+	if downed or invulnerable:
 		return
 	if _taunt_time > 0.0:
 		amount *= TAUNT_DAMAGE_TAKEN
@@ -536,21 +689,20 @@ func take_damage(amount: float) -> void:
 			contempt = mini(contempt + 1, contempt_cap)
 			_contempt_hit_cd = 0.4
 			_contempt_decay = 3.0
-		if _counter_gap <= 0.0:
-			_counter_gap = COUNTER_ROLL_GAP
-			if randf() < COUNTER_CHANCE:
-				_counter()
 	if hp <= 0.0:
 		hp = 0.0
 		downed = true
 		revive_progress = 0.0
 		moving = false
 		_taunt_time = 0.0
+		_ult_phase = 0
+		dashing = false
+		invulnerable = false
 		Game.party.on_hero_downed(self)
 
 
 func heal(amount: float) -> void:
-	if downed or kind == "kheiron": # Kheiron is Incurable.
+	if downed:
 		return
 	hp = minf(max_hp, hp + amount)
 

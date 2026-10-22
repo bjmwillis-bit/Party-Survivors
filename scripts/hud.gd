@@ -71,7 +71,7 @@ func _ready() -> void:
 	party_box.add_child(_swap_label)
 
 	var hint := _label(18)
-	hint.text = "Move: WASD     Aim: mouse     Skills: Q / E     Swap leader: Space     Revive: stand next to a fallen hero"
+	hint.text = "Move: WASD     Aim: mouse     Skills: Q / E     Ultimate: R     Swap leader: Space     Revive: stand next to a fallen hero"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	hint.offset_left = -900
 	hint.offset_top = -48
@@ -105,7 +105,7 @@ func _process(_delta: float) -> void:
 			if h.kind == "solenne" and h.contempt > 0:
 				bits.append("Contempt %d" % h.contempt)
 			if not h.is_leader:
-				for slot in ["q", "e"]:
+				for slot in ["q", "e", "r"]:
 					if not h.skill_is_passive(slot):
 						var left: float = h.cooldown[slot]
 						bits.append("%s %s" % [slot.to_upper(), "ready" if left <= 0.0 else "%ds" % ceili(left)])
@@ -131,17 +131,17 @@ func _process(_delta: float) -> void:
 func _build_skill_bar(root: Control) -> void:
 	var bar := HBoxContainer.new()
 	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	bar.offset_left = -330
-	bar.offset_right = 330
+	bar.offset_left = -420
+	bar.offset_right = 420
 	bar.offset_top = -120
 	bar.offset_bottom = -24
 	bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	bar.add_theme_constant_override("separation", 16)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(bar)
-	for slot in ["q", "e"]:
+	for slot in ["q", "e", "r"]:
 		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(300, 90)
+		panel.custom_minimum_size = Vector2(260, 90)
 		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color(0.0, 0.0, 0.0, 0.55)
@@ -251,7 +251,7 @@ func _build_end(root: Control) -> void:
 	_end_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_end_stats)
 	var again := Button.new()
-	again.text = "Run again  [R]"
+	again.text = "Run again  [Enter]"
 	again.custom_minimum_size = Vector2(320, 64)
 	again.add_theme_font_size_override("font_size", 26)
 	again.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

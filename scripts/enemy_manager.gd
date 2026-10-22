@@ -14,8 +14,11 @@ const SPEED := [2.5, 4.3]
 const SCALE := [1.0, 0.75]
 const KNOCK_TAKEN := [1.0, 1.4]
 const COLORS := [Color(0.36, 0.22, 0.2), Color(0.58, 0.44, 0.24)]
-const CONTACT_DPS := 9.0
+const HIT_DAMAGE := 6.0 # per blow, before the toughness ramp
+const HIT_INTERVAL := 1.0 # each enemy in reach strikes once a second
+const HIT_WINDUP := 0.45 # delay before the first blow after reaching a hero
 const STUN_TINT := Color(0.6, 0.72, 1.0)
+const SLOW_TINT := Color(0.55, 0.45, 0.75)
 
 var count := 0
 var pos := PackedVector2Array() # x and z on the ground
@@ -28,6 +31,11 @@ var sep := PackedVector2Array() # last push-apart force (recomputed every other 
 var stun_t := PackedFloat32Array() # seconds left stunned
 var taunt_t := PackedFloat32Array() # seconds left taunted
 var taunt_hero := PackedByteArray() # which hero (index in the party) taunted them
+var atk_cd := PackedFloat32Array() # seconds until this enemy's next blow
+var slow_t := PackedFloat32Array() # seconds left at half speed
+var dot_t := PackedFloat32Array() # seconds left taking damage over time
+var dot_dmg := PackedFloat32Array() # damage per second-tick
+var dot_acc := PackedFloat32Array()
 
 ## How long the horde took last frame, in milliseconds (for tuning).
 var cost_ms := 0.0
@@ -51,6 +59,11 @@ func _ready() -> void:
 	stun_t.resize(MAX_ENEMIES)
 	taunt_t.resize(MAX_ENEMIES)
 	taunt_hero.resize(MAX_ENEMIES)
+	atk_cd.resize(MAX_ENEMIES)
+	slow_t.resize(MAX_ENEMIES)
+	dot_t.resize(MAX_ENEMIES)
+	dot_dmg.resize(MAX_ENEMIES)
+	dot_acc.resize(MAX_ENEMIES)
 	_buffer.resize(MAX_ENEMIES * 16)
 
 	var body := CapsuleMesh.new()
@@ -162,6 +175,19 @@ func taunt_in_radius(center: Vector2, r: float, hero_index: int, seconds: float)
 		taunt_t[i] = seconds
 
 
+## Cenhelm's horn: slows everything in range, hurts them once a second,
+## and nudges them away from `center`.
+func horn(center: Vector2, r: float, seconds: float, tick_damage: float, push: float) -> void:
+	for i in query(center, r):
+		slow_t[i] = maxf(slow_t[i], seconds)
+		dot_t[i] = seconds
+		dot_dmg[i] = tick_damage
+		dot_acc[i] = 0.0
+		var rel: Vector2 = pos[i] - center
+		if rel.length() > 0.05:
+			knock[i] += rel.normalized() * push
+
+
 func damage(i: int, amount: float, dir: Vector2, force: float) -> void:
 	if i < 0 or i >= count or hp[i] <= 0.0:
 		return
@@ -191,6 +217,11 @@ func _remove_dead() -> void:
 			stun_t[i] = stun_t[last]
 			taunt_t[i] = taunt_t[last]
 			taunt_hero[i] = taunt_hero[last]
+			atk_cd[i] = atk_cd[last]
+			slow_t[i] = slow_t[last]
+			dot_t[i] = dot_t[last]
+			dot_dmg[i] = dot_dmg[last]
+			dot_acc[i] = dot_acc[last]
 			count -= 1
 		i -= 1
 
@@ -225,6 +256,11 @@ func _spawn(delta: float) -> void:
 		stun_t[count] = 0.0
 		taunt_t[count] = 0.0
 		taunt_hero[count] = 0
+		atk_cd[count] = HIT_WINDUP
+		slow_t[count] = 0.0
+		dot_t[count] = 0.0
+		dot_dmg[count] = 0.0
+		dot_acc[count] = 0.0
 		count += 1
 	if count >= MAX_ENEMIES:
 		_spawn_acc = 0.0
@@ -252,8 +288,7 @@ func _move(delta: float) -> void:
 		any_alive = any_alive or not h.downed
 	if not any_alive:
 		return
-	var touching := PackedInt32Array()
-	touching.resize(heroes.size())
+	var hits: Array = [] # [hero index, enemy index] for every blow this frame
 	var decay := exp(-7.0 * delta)
 
 	for i in count:
@@ -282,6 +317,16 @@ func _move(delta: float) -> void:
 			stun_t[i] -= delta
 		elif dist > 0.6:
 			v = (hero_xz[best] - p) / dist * SPEED[kind[i]]
+			if slow_t[i] > 0.0:
+				v *= 0.5
+		if slow_t[i] > 0.0:
+			slow_t[i] -= delta
+		if dot_t[i] > 0.0:
+			dot_t[i] -= delta
+			dot_acc[i] += delta
+			if dot_acc[i] >= 1.0:
+				dot_acc[i] -= 1.0
+				damage(i, dot_dmg[i], Vector2.ZERO, 0.0)
 		# Push away from neighbours so the horde spreads instead of stacking.
 		# Half the horde recalculates each frame; the rest reuse last frame's push.
 		if (i + _frame) % 2 == 0:
@@ -307,16 +352,22 @@ func _move(delta: float) -> void:
 		if v.length_squared() > 0.01:
 			yaw[i] = atan2(v.x, v.y)
 		flash[i] = maxf(0.0, flash[i] - delta)
-		if dist < 0.9 and not stunned:
-			touching[best] += 1
+		# Blows: an enemy in reach strikes once a second, after a short wind-up.
+		if dist < 0.9 and not stunned and hp[i] > 0.0:
+			atk_cd[i] -= delta
+			if atk_cd[i] <= 0.0:
+				atk_cd[i] = HIT_INTERVAL
+				hits.append([best, i])
+		else:
+			atk_cd[i] = HIT_WINDUP
 
-	# Contact damage grows with the crowd, but not linearly, so being
-	# surrounded is dangerous without being instant death.
-	var toughness := 1.0 + Game.time_alive / 400.0
-	for h in heroes.size():
-		if touching[h] > 0 and alive[h]:
-			var crowd := pow(float(mini(touching[h], 5)), 0.7)
-			Game.party.apply_contact_damage(heroes[h], CONTACT_DPS * crowd * toughness * delta)
+	# Only so many enemies fit around a hero, which naturally limits how
+	# hard a crowd can hit.
+	var dmg := HIT_DAMAGE * (1.0 + Game.time_alive / 400.0)
+	for h in hits:
+		var hero = heroes[h[0]]
+		if not hero.downed:
+			Game.party.apply_hit(hero, dmg, h[1])
 
 
 func _render() -> void:
@@ -334,6 +385,8 @@ func _render() -> void:
 			col = Color.WHITE
 		elif stun_t[i] > 0.0:
 			col = STUN_TINT
+		elif slow_t[i] > 0.0:
+			col = col.lerp(SLOW_TINT, 0.6)
 		var o := i * 16
 		_buffer[o] = c
 		_buffer[o + 1] = 0.0

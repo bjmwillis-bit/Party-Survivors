@@ -14,7 +14,7 @@ var pool := [
 	{"id": "khe_heal", "hero": "Kheiron", "title": "Atonement", "desc": "Kheiron's Lesson and Grove heal 50% more.", "max": 3},
 	{"id": "party_speed", "hero": "Party", "title": "Lighter Step", "desc": "The party moves 8% faster.", "max": 4},
 	{"id": "party_haste", "hero": "Party", "title": "Quicker Hands", "desc": "Everyone attacks 12% faster.", "max": 5},
-	{"id": "party_hp", "hero": "Party", "title": "Hardened", "desc": "Everyone gains 15% max HP and heals 25%. (Kheiron is Incurable.)", "max": 4},
+	{"id": "party_hp", "hero": "Party", "title": "Hardened", "desc": "Everyone gains 15% max HP and heals 25%.", "max": 4},
 	{"id": "magnet", "hero": "Party", "title": "Keen Eyes", "desc": "Pick up XP from 40% further away.", "max": 3},
 ]
 

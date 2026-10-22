@@ -110,9 +110,9 @@ func effect_material(color: Color) -> StandardMaterial3D:
 # --- Input -------------------------------------------------------------------
 # Controls are set up in code so they work without touching Project Settings.
 # Keyboard and mouse: WASD or arrows to move, mouse to aim, Q and E for the
-# leader's skills, Space or Shift to swap.
+# leader's skills, R for their ultimate, Space or Shift to swap.
 # Gamepad: left stick to move, right stick to aim, left bumper and left
-# trigger for skills, A or right bumper to swap.
+# trigger for skills, right trigger for the ultimate, A or right bumper to swap.
 
 func _setup_input() -> void:
 	_bind_keys("move_left", [KEY_A, KEY_LEFT])
@@ -131,6 +131,8 @@ func _setup_input() -> void:
 	_bind_button("skill_1", JOY_BUTTON_LEFT_SHOULDER)
 	_bind_keys("skill_2", [KEY_E])
 	_bind_axis("skill_2", JOY_AXIS_TRIGGER_LEFT, 1.0)
+	_bind_keys("ultimate", [KEY_R])
+	_bind_axis("ultimate", JOY_AXIS_TRIGGER_RIGHT, 1.0)
 	_bind_keys("swap", [KEY_SPACE, KEY_SHIFT])
 	_bind_button("swap", JOY_BUTTON_A)
 	_bind_button("swap", JOY_BUTTON_RIGHT_SHOULDER)
@@ -140,7 +142,7 @@ func _setup_input() -> void:
 	_bind_button("pick_1", JOY_BUTTON_X)
 	_bind_button("pick_2", JOY_BUTTON_Y)
 	_bind_button("pick_3", JOY_BUTTON_B)
-	_bind_keys("restart", [KEY_R])
+	_bind_keys("restart", [KEY_ENTER, KEY_KP_ENTER])
 	_bind_button("restart", JOY_BUTTON_START)
 
 

@@ -73,6 +73,8 @@ func _process(delta: float) -> void:
 		leader().cast("q")
 	if Input.is_action_just_pressed("skill_2"):
 		leader().cast("e")
+	if Input.is_action_just_pressed("ultimate"):
+		leader().cast("r")
 	_tick_grove(delta)
 	_move_leader(delta)
 	_aim_leader()
@@ -112,7 +114,7 @@ func lowest_health_ally(exclude, below := 1.0):
 	var best = null
 	var best_frac := below
 	for h in heroes:
-		if h == exclude or h.downed or h.kind == "kheiron": # Kheiron is Incurable
+		if h == exclude or h.downed:
 			continue
 		var frac: float = h.hp / h.max_hp
 		if frac < best_frac:
@@ -344,14 +346,15 @@ func _set_leader(index: int, entrance: bool) -> void:
 
 # --- Damage and reviving -----------------------------------------------------
 
-## Called by the enemies. Cenhelm takes part of any hit aimed at someone else.
-func apply_contact_damage(target, amount: float) -> void:
+## Called by the enemies for each blow. Cenhelm takes part of any blow
+## aimed at someone else.
+func apply_hit(target, amount: float, enemy_index: int) -> void:
 	var c = hero("Cenhelm")
 	if c != null and not c.downed and target != c:
 		c.take_damage(amount * c.intercept_share)
-		target.take_damage(amount * (1.0 - c.intercept_share))
+		target.take_hit(amount * (1.0 - c.intercept_share), enemy_index)
 	else:
-		target.take_damage(amount)
+		target.take_hit(amount, enemy_index)
 
 
 func on_hero_downed(h) -> void:
@@ -401,7 +404,7 @@ func _tick_grove(delta: float) -> void:
 	grove_time -= delta
 	for h in heroes:
 		if in_grove(h.position):
-			h.heal(h.max_hp * grove_heal * delta) # Kheiron is Incurable, so not him
+			h.heal(h.max_hp * grove_heal * delta)
 	# Fade out over the last half second.
 	_grove_mat.albedo_color.a = 0.22 * clampf(grove_time / 0.5, 0.0, 1.0)
 	if grove_time <= 0.0:
