@@ -89,4 +89,8 @@ func _report(main, game) -> void:
 		picks.append("%s x%d" % [id, u.taken[id]])
 	print("CARDS: ", ", ".join(picks))
 	print("BONDS: ", game.party.bonds.keys(), "  banished: ", u.banished.keys(), "  rerolls left: ", u.rerolls_left, "  banishes left: ", u.banishes_left)
+	print("RUN: elites up to %ds, hunters spawned %d killed %d, final boss %s, chests opened %d, gold %d, swarms seen %s" % [
+		int(main.next_elite - main.ELITE_EVERY), main.minis_spawned, main.minis_killed,
+		"killed" if main.final_killed else ("spawned" if main.final_spawned else "not reached"),
+		game.chests.opened, game.gold, "yes" if main.next_swarm_kills > main.SWARM_EVERY_KILLS or main.swarm_time > 0 else "no"])
 	print("FRAME (script cost, no rendering): avg %.2f ms, 99th percentile %.2f ms" % [avg, p99])

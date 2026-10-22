@@ -15,7 +15,12 @@ var hud
 
 var time_alive := 0.0
 var kills := 0
+var gold := 0
 var shake := 0.0
+var chests
+
+## Player settings. A menu will edit these later.
+var settings := {"damage_numbers": true}
 
 ## Tests raise this to play faster than real time.
 var base_time_scale := 1.0

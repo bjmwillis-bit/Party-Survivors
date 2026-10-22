@@ -13,6 +13,8 @@ var _ring: TorusMesh
 var _bolt_mesh: Mesh
 var _bolt_mats := {}
 var _puffs_this_frame := 0
+var _numbers := 0 # damage numbers on screen right now
+const MAX_NUMBERS := 14
 
 
 func _ready() -> void:
@@ -67,6 +69,42 @@ func thrust(origin: Vector3, yaw: float, length: float, color: Color) -> void:
 	n.rotation.y = yaw
 	# Shift forward so the thrust starts at her and extends outwards.
 	n.position += Vector3(sin(yaw), 0.0, cos(yaw)) * length * 0.5
+
+
+## A floating damage number (big hits only; can be turned off in settings).
+func damage_number(at: Vector3, amount: float) -> void:
+	if not Game.settings.get("damage_numbers", true) or _numbers >= MAX_NUMBERS:
+		return
+	var col := Color(1.0, 0.95, 0.8)
+	if amount >= 150.0:
+		col = Color(1.0, 0.55, 0.15)
+	if amount >= 400.0:
+		col = Color(1.0, 0.2, 0.15)
+	var size := 1.0 + clampf(amount / 300.0, 0.0, 1.0)
+	float_text(at + Vector3(randf_range(-0.3, 0.3), 0.0, randf_range(-0.3, 0.3)), str(int(amount)), col, size)
+
+
+## Text that floats up and fades (damage numbers, "+25 gold").
+func float_text(at: Vector3, text: String, color: Color, size := 1.0) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.font_size = int(56 * size)
+	l.outline_size = int(14 * size)
+	l.modulate = color
+	l.outline_modulate = Color(0, 0, 0, 1)
+	l.pixel_size = 0.01
+	l.position = at
+	add_child(l)
+	_numbers += 1
+	var tw := l.create_tween().set_parallel(true)
+	tw.tween_property(l, "position:y", at.y + 1.2, 0.8).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(l, "modulate:a", 0.0, 0.8).set_delay(0.3)
+	tw.tween_property(l, "outline_modulate:a", 0.0, 0.8).set_delay(0.3)
+	tw.chain().tween_callback(func() -> void:
+		_numbers -= 1
+		l.queue_free())
 
 
 func dust(origin: Vector3) -> void:

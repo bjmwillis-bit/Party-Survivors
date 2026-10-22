@@ -15,6 +15,15 @@ var _cards: Array = []
 var _end: Control
 var _end_title: Label
 var _end_stats: Label
+var _gold_label: Label
+var _kills
+var _boss_box: VBoxContainer
+var _boss_name: Label
+var _boss_bar: ProgressBar
+var _banner: Label
+var _banner_t := 0.0
+
+const KillCounterScript := preload("res://scripts/kill_counter.gd")
 
 
 func _ready() -> void:
@@ -41,6 +50,50 @@ func _ready() -> void:
 	_info_label = _label(22)
 	_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	top.add_child(_info_label)
+
+	# Boss health bar, under the timer while a boss is alive.
+	_boss_box = VBoxContainer.new()
+	_boss_box.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_boss_box.offset_left = -360
+	_boss_box.offset_right = 360
+	_boss_box.offset_top = 112
+	_boss_box.offset_bottom = 170
+	_boss_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_box.visible = false
+	root.add_child(_boss_box)
+	_boss_name = _label(22)
+	_boss_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_boss_box.add_child(_boss_name)
+	_boss_bar = _bar(Color(0.8, 0.1, 0.08), Vector2(720, 22))
+	_boss_box.add_child(_boss_bar)
+
+	# Event banner (swarm, hunters, goblin, the beast).
+	_banner = _label(48)
+	_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_banner.offset_left = -700
+	_banner.offset_right = 700
+	_banner.offset_top = 190
+	_banner.offset_bottom = 260
+	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_banner.modulate.a = 0.0
+	root.add_child(_banner)
+
+	# Kill counter (top right) and gold (top left).
+	_kills = KillCounterScript.new()
+	_kills.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_kills.offset_left = -390
+	_kills.offset_right = -24
+	_kills.offset_top = 24
+	_kills.offset_bottom = 134
+	root.add_child(_kills)
+	_gold_label = _label(30)
+	_gold_label.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_gold_label.offset_left = 28
+	_gold_label.offset_top = 28
+	_gold_label.offset_right = 400
+	_gold_label.offset_bottom = 70
+	_gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	root.add_child(_gold_label)
 
 	var party_box := VBoxContainer.new()
 	party_box.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -89,8 +142,19 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	var main = Game.main
 	var t: float = Game.time_alive
-	_timer_label.text = "%02d:%02d" % [int(t) / 60, int(t) % 60]
-	_info_label.text = "Level %d     Kills %d" % [main.level, Game.kills]
+	if main.final_spawned:
+		_timer_label.text = "∞"
+		_timer_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.2))
+	else:
+		_timer_label.text = "%02d:%02d" % [int(t) / 60, int(t) % 60]
+	var swarm := "     SWARM %ds" % ceili(main.swarm_time) if main.swarm_time > 0.0 else ""
+	_info_label.text = "Level %d%s" % [main.level, swarm]
+	_kills.kills = main.locked_kills if main.locked_kills >= 0 else Game.kills
+	_gold_label.text = "Gold  %d" % Game.gold
+	_update_boss_bar()
+	if _banner_t > 0.0:
+		_banner_t -= _delta
+		_banner.modulate.a = clampf(_banner_t / 0.6, 0.0, 1.0)
 	_xp_bar.value = float(main.xp_have) / float(main.xp_need)
 
 	for r in _rows:
@@ -128,6 +192,36 @@ func _process(_delta: float) -> void:
 			_toggle_banish()
 	elif _end.visible and Input.is_action_just_pressed("restart"):
 		main.restart()
+
+
+# --- Bosses, banners and the tally --------------------------------------------
+
+func _update_boss_bar() -> void:
+	var E = Game.enemies
+	var i: int = E.find_kind(E.FINAL_BOSS)
+	var title := "THE BEAST"
+	if i < 0:
+		i = E.find_kind(E.MINIBOSS)
+		title = "HUNTER"
+	_boss_box.visible = i >= 0
+	if i >= 0:
+		_boss_name.text = title
+		_boss_bar.value = clampf(E.hp[i] / maxf(Game.main.boss_max_hp, 1.0), 0.0, 1.0)
+
+
+func banner(text: String, color := Color.WHITE, seconds := 2.0) -> void:
+	_banner.text = text
+	_banner.add_theme_color_override("font_color", color)
+	_banner_t = seconds
+	_banner.modulate.a = 1.0
+
+
+func add_claw() -> void:
+	_kills.add_claw()
+
+
+func strike_tally() -> void:
+	_kills.strike()
 
 
 # --- Leader's skill bar ------------------------------------------------------
@@ -300,10 +394,11 @@ func _toggle_banish() -> void:
 
 # --- End of run --------------------------------------------------------------
 
-func show_end(victory: bool, time_alive: float, kills: int, level: int) -> void:
-	_end_title.text = "You held the line!" if victory else "The party fell"
-	var subtitle := "The boss arrives here in milestone 2." if victory else "Try swapping Cenhelm to the front when the crowd closes in."
-	_end_stats.text = "Survived %02d:%02d     Kills %d     Level %d\n\n%s" % [int(time_alive) / 60, int(time_alive) % 60, kills, level, subtitle]
+func show_end(victory: bool, time_alive: float, kills: int, level: int, gold: int) -> void:
+	_end_title.text = "The beast is dead!" if victory else "The party fell"
+	var hunters: int = Game.main.minis_killed
+	_end_stats.text = "Survived %02d:%02d     Kills %d     Level %d     Hunters slain %d/4\n\nGold earned  %d\nNext unlock: a new hero  (coming soon)" % [
+		int(time_alive) / 60, int(time_alive) % 60, kills, level, hunters, gold]
 	_levelup.visible = false
 	_end.visible = true
 

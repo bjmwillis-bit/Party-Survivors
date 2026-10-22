@@ -8,12 +8,22 @@ extends Node3D
 const MAX_ENEMIES := 650
 const CELL := 0.8 # about the size of one enemy, so neighbour checks stay small
 
-# Per enemy type: 0 = shambler, 1 = runner (appears after 75 seconds).
-const HP := [18.0, 9.0]
-const SPEED := [2.5, 4.3]
-const SCALE := [1.0, 0.75]
-const KNOCK_TAKEN := [1.0, 1.4]
-const COLORS := [Color(0.36, 0.22, 0.2), Color(0.58, 0.44, 0.24)]
+# Enemy types. Each list below has one entry per type, in this order.
+enum { SHAMBLER, RUNNER, SWARMLING, ELITE, MINIBOSS, FINAL_BOSS, GOBLIN }
+const HP := [18.0, 9.0, 5.0, 220.0, 650.0, 3200.0, 150.0]
+const SPEED := [2.5, 4.3, 4.8, 2.3, 2.0, 1.8, 5.5]
+const SCALE := [1.0, 0.75, 0.55, 1.6, 2.3, 3.3, 0.8]
+const KNOCK_TAKEN := [1.0, 1.4, 1.6, 0.4, 0.15, 0.05, 1.0]
+const STUN_TAKEN := [1.0, 1.0, 1.0, 0.6, 0.3, 0.0, 1.0] # how much of a stun sticks
+const HIT_MULT := [1.0, 0.8, 0.35, 2.0, 3.0, 4.0, 0.0] # blow damage (goblins don't fight)
+const XP_DROP := [1, 1, 1, 10, 30, 0, 0]
+const COLORS := [
+	Color(0.36, 0.22, 0.2), Color(0.58, 0.44, 0.24), Color(0.72, 0.64, 0.46),
+	Color(0.55, 0.15, 0.5), Color(0.5, 0.05, 0.05), Color(0.16, 0.02, 0.02),
+	Color(1.0, 0.82, 0.2),
+]
+const GOBLIN_LIFE := 20.0 # seconds before an uncaught goblin escapes
+const BIG_HIT := 40.0 # hits at least this big show a damage number
 const HIT_DAMAGE := 6.0 # per blow, before the toughness ramp
 const HIT_INTERVAL := 1.0 # each enemy in reach strikes once a second
 const HIT_WINDUP := 0.45 # delay before the first blow after reaching a hero
@@ -37,6 +47,10 @@ var slow_amt := PackedFloat32Array() # how much slower (0.5 = half speed)
 var dot_t := PackedFloat32Array() # seconds left taking damage over time
 var dot_dmg := PackedFloat32Array() # damage per second-tick
 var dot_acc := PackedFloat32Array()
+var age := PackedFloat32Array() # seconds since spawning
+
+## A swarm event doubles spawning, mostly tiny swarmlings.
+var swarm_active := false
 
 ## How long the horde took last frame, in milliseconds (for tuning).
 var cost_ms := 0.0
@@ -63,6 +77,7 @@ func _ready() -> void:
 	atk_cd.resize(MAX_ENEMIES)
 	slow_t.resize(MAX_ENEMIES)
 	slow_amt.resize(MAX_ENEMIES)
+	age.resize(MAX_ENEMIES)
 	dot_t.resize(MAX_ENEMIES)
 	dot_dmg.resize(MAX_ENEMIES)
 	dot_acc.resize(MAX_ENEMIES)
@@ -148,6 +163,24 @@ func nearest_in_circle(from: Vector2, center: Vector2, radius: float) -> int:
 	return best
 
 
+## The most important target inside the leash: the nearest boss, elite or
+## goblin if there is one, otherwise the nearest enemy.
+func best_target_in_circle(from: Vector2, center: Vector2, radius: float) -> int:
+	var best := -1
+	var best_d := INF
+	var r2 := radius * radius
+	for i in count:
+		if hp[i] <= 0.0 or kind[i] < ELITE or center.distance_squared_to(pos[i]) > r2:
+			continue
+		var d := from.distance_squared_to(pos[i])
+		if d < best_d:
+			best_d = d
+			best = i
+	if best >= 0:
+		return best
+	return nearest_in_circle(from, center, radius)
+
+
 ## Like nearest_in_circle, but the enemy must also be inside a second circle
 ## (used when followers want to fight inside Kheiron's grove).
 func nearest_in_two_circles(from: Vector2, c1: Vector2, r1: float, c2: Vector2, r2: float) -> int:
@@ -167,7 +200,9 @@ func nearest_in_two_circles(from: Vector2, c1: Vector2, r1: float, c2: Vector2, 
 
 func stun(i: int, seconds: float) -> void:
 	if i >= 0 and i < count:
-		stun_t[i] = maxf(stun_t[i], seconds)
+		var s: float = seconds * STUN_TAKEN[kind[i]]
+		if s > 0.0:
+			stun_t[i] = maxf(stun_t[i], s)
 
 
 ## Makes every enemy within `r` of `center` go after one hero for a while.
@@ -215,13 +250,29 @@ func horn(center: Vector2, r: float, seconds: float, tick_damage: float, push: f
 func damage(i: int, amount: float, dir: Vector2, force: float) -> void:
 	if i < 0 or i >= count or hp[i] <= 0.0:
 		return
+	var k := kind[i]
 	hp[i] -= amount
 	flash[i] = 0.1
-	knock[i] += dir * force * KNOCK_TAKEN[kind[i]]
+	knock[i] += dir * force * KNOCK_TAKEN[k]
+	# Damage numbers only for big hits, and on elites and bosses.
+	if amount >= BIG_HIT or (k >= ELITE and k != GOBLIN and amount >= 5.0):
+		var s: float = SCALE[k]
+		Game.fx.damage_number(Vector3(pos[i].x, 1.4 * s + 0.4, pos[i].y), amount)
 	if hp[i] <= 0.0:
 		Game.kills += 1
-		Game.xp.drop(pos[i], 1)
-		Game.fx.death_puff(Vector3(pos[i].x, 0.5, pos[i].y), COLORS[kind[i]])
+		var p: Vector2 = pos[i]
+		if XP_DROP[k] > 0:
+			Game.xp.drop(p, XP_DROP[k])
+		Game.fx.death_puff(Vector3(p.x, 0.5, p.y), COLORS[k])
+		match k:
+			ELITE:
+				Game.main.on_elite_killed(p)
+			MINIBOSS:
+				Game.main.on_miniboss_killed(p)
+			FINAL_BOSS:
+				Game.main.on_final_boss_killed(p)
+			GOBLIN:
+				Game.main.on_goblin_caught(p)
 
 
 # --- Each frame --------------------------------------------------------------
@@ -244,6 +295,7 @@ func _remove_dead() -> void:
 			atk_cd[i] = atk_cd[last]
 			slow_t[i] = slow_t[last]
 			slow_amt[i] = slow_amt[last]
+			age[i] = age[last]
 			dot_t[i] = dot_t[last]
 			dot_dmg[i] = dot_dmg[last]
 			dot_acc[i] = dot_acc[last]
@@ -254,42 +306,66 @@ func _remove_dead() -> void:
 func _spawn(delta: float) -> void:
 	var t: float = Game.time_alive
 	var rate := 1.6 + t * 0.045 + pow(t / 60.0, 2.0) * 0.12 # enemies per second
+	if swarm_active:
+		rate *= 2.0
 	_spawn_acc += rate * delta
+	# Keep a little room so bosses and elites can always appear.
+	while _spawn_acc >= 1.0 and count < MAX_ENEMIES - 20:
+		_spawn_acc -= 1.0
+		var k := SHAMBLER
+		if swarm_active and randf() < 0.7:
+			k = SWARMLING
+		elif t > 75.0 and randf() < 0.3:
+			k = RUNNER
+		spawn_near_leader(k)
+	if count >= MAX_ENEMIES - 20:
+		_spawn_acc = 0.0
+
+
+## Spawns an enemy in a ring just off screen around the leader. Returns its index.
+func spawn_near_leader(k: int, dist_min := 19.0, dist_max := 24.0) -> int:
 	var l = Game.party.leader()
 	if l == null:
-		return
-	var center := Vector2(l.position.x, l.position.z)
-	var a: float = Game.main.ARENA_HALF
-	var toughness := 1.0 + t / 140.0
-	while _spawn_acc >= 1.0 and count < MAX_ENEMIES:
-		_spawn_acc -= 1.0
-		var k := 0
-		if t > 75.0 and randf() < 0.3:
-			k = 1
-		# Appear in a ring just off screen.
-		var ang := randf() * TAU
-		var p := center + Vector2(cos(ang), sin(ang)) * randf_range(19.0, 24.0)
-		p.x = clampf(p.x, -a, a)
-		p.y = clampf(p.y, -a, a)
-		pos[count] = p
-		knock[count] = Vector2.ZERO
-		hp[count] = HP[k] * toughness
-		flash[count] = 0.0
-		kind[count] = k
-		yaw[count] = 0.0
-		sep[count] = Vector2.ZERO
-		stun_t[count] = 0.0
-		taunt_t[count] = 0.0
-		taunt_hero[count] = 0
-		atk_cd[count] = HIT_WINDUP
-		slow_t[count] = 0.0
-		slow_amt[count] = 0.0
-		dot_t[count] = 0.0
-		dot_dmg[count] = 0.0
-		dot_acc[count] = 0.0
-		count += 1
+		return -1
+	var ang := randf() * TAU
+	var p := Vector2(l.position.x, l.position.z) + Vector2(cos(ang), sin(ang)) * randf_range(dist_min, dist_max)
+	return spawn(k, p)
+
+
+func spawn(k: int, p: Vector2) -> int:
 	if count >= MAX_ENEMIES:
-		_spawn_acc = 0.0
+		return -1
+	var a: float = Game.main.ARENA_HALF
+	p.x = clampf(p.x, -a, a)
+	p.y = clampf(p.y, -a, a)
+	var i := count
+	pos[i] = p
+	knock[i] = Vector2.ZERO
+	hp[i] = HP[k] * (1.0 + Game.time_alive / 140.0)
+	flash[i] = 0.0
+	kind[i] = k
+	yaw[i] = 0.0
+	sep[i] = Vector2.ZERO
+	stun_t[i] = 0.0
+	taunt_t[i] = 0.0
+	taunt_hero[i] = 0
+	atk_cd[i] = HIT_WINDUP
+	slow_t[i] = 0.0
+	slow_amt[i] = 0.0
+	dot_t[i] = 0.0
+	dot_dmg[i] = 0.0
+	dot_acc[i] = 0.0
+	age[i] = 0.0
+	count += 1
+	return i
+
+
+## Index of the first living enemy of a type, or -1.
+func find_kind(k: int) -> int:
+	for i in count:
+		if kind[i] == k and hp[i] > 0.0:
+			return i
+	return -1
 
 
 func _rebuild_grid() -> void:
@@ -339,10 +415,17 @@ func _move(delta: float) -> void:
 		var dist := sqrt(best_d)
 		var v := Vector2.ZERO
 		var stunned := stun_t[i] > 0.0
+		var k := kind[i]
+		age[i] += delta
 		if stunned:
 			stun_t[i] -= delta
-		elif dist > 0.6:
-			v = (hero_xz[best] - p) / dist * SPEED[kind[i]]
+		elif k == GOBLIN:
+			# The goblin runs away from the party, and escapes after a while.
+			v = (p - hero_xz[best]) / maxf(dist, 0.01) * SPEED[k]
+			if age[i] > GOBLIN_LIFE:
+				hp[i] = -1.0 # gone, no reward
+		elif dist > 0.6 + 0.4 * (SCALE[k] - 1.0):
+			v = (hero_xz[best] - p) / dist * SPEED[k]
 			if slow_t[i] > 0.0:
 				v *= 1.0 - slow_amt[i]
 		if slow_t[i] > 0.0:
@@ -374,16 +457,21 @@ func _move(delta: float) -> void:
 							push += d / l * (0.71 - l)
 			sep[i] = push
 		knock[i] = knock[i] * decay
-		pos[i] = p + (v + sep[i] * 6.0 + knock[i]) * delta
+		var np := p + (v + sep[i] * 6.0 + knock[i]) * delta
+		var a: float = Game.main.ARENA_HALF
+		np.x = clampf(np.x, -a, a)
+		np.y = clampf(np.y, -a, a)
+		pos[i] = np
 		if v.length_squared() > 0.01:
 			yaw[i] = atan2(v.x, v.y)
 		flash[i] = maxf(0.0, flash[i] - delta)
 		# Blows: an enemy in reach strikes once a second, after a short wind-up.
-		if dist < 0.9 and not stunned and hp[i] > 0.0:
+		var reach: float = 0.9 + 0.45 * (SCALE[k] - 1.0)
+		if dist < reach and not stunned and hp[i] > 0.0 and HIT_MULT[k] > 0.0:
 			atk_cd[i] -= delta
 			if atk_cd[i] <= 0.0:
 				atk_cd[i] = HIT_INTERVAL
-				hits.append([best, i])
+				hits.append([best, i, HIT_MULT[k]])
 		else:
 			atk_cd[i] = HIT_WINDUP
 
@@ -393,7 +481,7 @@ func _move(delta: float) -> void:
 	for h in hits:
 		var hero = heroes[h[0]]
 		if not hero.downed:
-			Game.party.apply_hit(hero, dmg, h[1])
+			Game.party.apply_hit(hero, dmg * h[2], h[1])
 
 
 func _render() -> void:

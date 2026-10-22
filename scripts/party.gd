@@ -294,7 +294,7 @@ func _nearest_grove(p: Vector3) -> Dictionary:
 
 ## Index of the enemy nearest to the follower, among enemies inside the leash.
 func _hunt(from: Vector2, leash_center: Vector2) -> int:
-	return Game.enemies.nearest_in_circle(from, leash_center, LEASH)
+	return Game.enemies.best_target_in_circle(from, leash_center, LEASH)
 
 
 ## Stops heroes standing inside each other.

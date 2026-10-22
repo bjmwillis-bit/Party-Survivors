@@ -8,8 +8,15 @@ const XpScript := preload("res://scripts/xp_manager.gd")
 const FxScript := preload("res://scripts/effects.gd")
 const HudScript := preload("res://scripts/hud.gd")
 const UpgradesScript := preload("res://scripts/upgrades.gd")
+const ChestsScript := preload("res://scripts/chests.gd")
 
-const RUN_LENGTH := 720.0 # 12 minutes. The boss arrives here in milestone 2.
+# The shape of a run.
+const RUN_LENGTH := 720.0 # 12 minutes: the final boss arrives, and the timer becomes ∞
+const ELITE_EVERY := 90.0
+const MINIBOSS_TIMES := [150.0, 300.0, 450.0, 600.0]
+const SWARM_EVERY_KILLS := 500
+const SWARM_TIME := 60.0
+const GOBLIN_EVERY_CHESTS := 3
 const ARENA_HALF := 60.0 # The arena is 120 x 120 metres.
 const CAM_PITCH := 55.0 # How steeply the camera looks down (degrees).
 const CAM_DISTANCE := 24.0
@@ -25,6 +32,17 @@ var choice_level := 0 # the level the current cards are for
 var ended := false
 var upgrades
 
+var next_elite := ELITE_EVERY
+var minis_spawned := 0
+var minis_killed := 0
+var final_spawned := false
+var final_killed := false
+var locked_kills := -1 # the score, once the final boss falls
+var swarm_time := 0.0 # seconds left in the current swarm
+var next_swarm_kills := SWARM_EVERY_KILLS
+var boss_max_hp := 1.0
+var _victory_delay := -1.0
+
 ## Tests drive the leader with these instead of the keyboard.
 var autopilot := false
 var autopilot_dir := Vector3.ZERO
@@ -39,6 +57,7 @@ func _ready() -> void:
 	Game.main = self
 	Game.time_alive = 0.0
 	Game.kills = 0
+	Game.gold = 0
 	Game.shake = 0.0
 	upgrades = UpgradesScript.new()
 	_build_world()
@@ -52,6 +71,8 @@ func _ready() -> void:
 	add_child(Game.xp)
 	Game.party = PartyScript.new()
 	add_child(Game.party)
+	Game.chests = ChestsScript.new()
+	add_child(Game.chests)
 	Game.hud = HudScript.new()
 	add_child(Game.hud)
 
@@ -60,9 +81,86 @@ func _process(delta: float) -> void:
 	if ended:
 		return
 	Game.time_alive += delta
-	if Game.time_alive >= RUN_LENGTH:
-		_end_run(true)
+	_run_timeline(delta)
+	if _victory_delay >= 0.0:
+		_victory_delay -= delta
+		if _victory_delay < 0.0:
+			_end_run(true)
 	_update_camera(delta)
+
+
+# --- The run's timeline ------------------------------------------------------
+
+func _run_timeline(delta: float) -> void:
+	var t: float = Game.time_alive
+	var E = Game.enemies
+	if t >= next_elite and not final_killed:
+		next_elite += ELITE_EVERY
+		E.spawn_near_leader(E.ELITE)
+	while minis_spawned < MINIBOSS_TIMES.size() and t >= MINIBOSS_TIMES[minis_spawned]:
+		minis_spawned += 1
+		var i: int = E.spawn_near_leader(E.MINIBOSS, 15.0, 18.0)
+		if i >= 0:
+			boss_max_hp = E.hp[i]
+		Game.hud.banner("A hunter approaches  (%d/4)" % minis_spawned, Color(0.9, 0.2, 0.15))
+	if not final_spawned and t >= RUN_LENGTH:
+		final_spawned = true
+		var i: int = E.spawn_near_leader(E.FINAL_BOSS, 15.0, 18.0)
+		if i >= 0:
+			boss_max_hp = E.hp[i]
+		Game.hud.banner("THE BEAST ARRIVES", Color(1.0, 0.15, 0.1), 3.0)
+		Game.add_shake(0.5)
+	# Swarms: every 500 kills, a minute of double spawning.
+	if swarm_time > 0.0:
+		swarm_time -= delta
+		if swarm_time <= 0.0:
+			E.swarm_active = false
+			next_swarm_kills = Game.kills + SWARM_EVERY_KILLS
+	elif Game.kills >= next_swarm_kills and not final_killed:
+		swarm_time = SWARM_TIME
+		E.swarm_active = true
+		Game.hud.banner("SWARM!", Color(1.0, 0.75, 0.2))
+
+
+func on_elite_killed(p: Vector2) -> void:
+	Game.chests.spawn(p, ChestsScript.roll_tier())
+
+
+func on_miniboss_killed(p: Vector2) -> void:
+	minis_killed += 1
+	Game.chests.spawn(p, "epic")
+	Game.hud.add_claw()
+	Game.hud.banner("Hunter slain  (%d/4)" % minis_killed, Color(0.9, 0.2, 0.15))
+	Game.hitstop(0.12)
+	Game.add_shake(0.4)
+
+
+func on_final_boss_killed(p: Vector2) -> void:
+	final_killed = true
+	locked_kills = Game.kills
+	add_gold(100)
+	Game.fx.float_text(Vector3(p.x, 3.0, p.y), "+100 gold", Color(1.0, 0.85, 0.3), 2.0)
+	Game.hud.strike_tally()
+	Game.hud.banner("THE BEAST IS DEAD", Color(1.0, 0.85, 0.3), 3.0)
+	Game.hitstop(0.25)
+	Game.add_shake(0.8)
+	_victory_delay = 2.5
+
+
+func on_goblin_caught(p: Vector2) -> void:
+	add_gold(60)
+	Game.fx.float_text(Vector3(p.x, 1.5, p.y), "+60 gold", Color(1.0, 0.85, 0.3), 1.6)
+	Game.fx.ring(Vector3(p.x, 0.0, p.y), 2.5, Color(1.0, 0.82, 0.2), 0.3)
+
+
+func on_chest_opened(total: int) -> void:
+	if total % GOBLIN_EVERY_CHESTS == 0:
+		Game.enemies.spawn_near_leader(Game.enemies.GOBLIN, 10.0, 13.0)
+		Game.hud.banner("A treasure goblin!", Color(1.0, 0.82, 0.2))
+
+
+func add_gold(amount: int) -> void:
+	Game.gold += amount
 
 
 # --- Levelling ---------------------------------------------------------------
@@ -150,7 +248,7 @@ func _end_run(victory: bool) -> void:
 		return
 	ended = true
 	get_tree().paused = true
-	Game.hud.show_end(victory, Game.time_alive, Game.kills, level)
+	Game.hud.show_end(victory, Game.time_alive, locked_kills if locked_kills >= 0 else Game.kills, level, Game.gold)
 
 
 func restart() -> void:

@@ -57,6 +57,17 @@ Enemies strike in distinct blows (once a second each, after a short wind-up).
 
 The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst.
 
+## A run
+
+- **Elites** (purple, bigger) appear every 90 s and drop a chest. Walk onto it: it charges for 2 s, glowing in its rarity colour, then pops with gold.
+- **Hunters** (mini-bosses) arrive at 2:30, 5:00, 7:30 and 10:00. Each one killed scratches a bloody claw mark behind the kill counter.
+- **The final boss** arrives at 12:00. The timer turns to ∞. Killing it strikes through the tally, locks your score and wins the run.
+- **Swarms:** every 500 kills, a minute of double spawning, mostly tiny swarmlings.
+- **Treasure goblin:** every 3rd chest opened sends one running. Catch it for gold before it escapes (20 s).
+- **Followers** focus elites, bosses and goblins when one is inside the leash.
+- **Damage numbers** show for big hits and for hits on elites and bosses (a settings toggle comes with the menu).
+- Gold is counted per run for now. The end screen shows a placeholder "next unlock".
+
 ## Level-up cards
 
 Cards are coloured by hero (Solenne red, Cenhelm orange, Kheiron green, party grey) and bordered by rarity, each with its own reveal:
@@ -84,4 +95,4 @@ Cards are coloured by hero (Solenne red, Cenhelm orange, Kheiron green, party gr
 
 ## Next
 
-More enemy types, an elite, the boss at 12 minutes, and real skill-upgrade cards.
+Placeholder hero models from the KayKit Adventurers pack (CC0), then meta-progression (gold, talent trees).
