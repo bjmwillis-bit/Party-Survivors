@@ -49,6 +49,10 @@ var facing := 0.0 # where the hero wants to face (radians)
 var face_lock := 0.0 # while > 0, the hero keeps facing their attack
 var move_dir := Vector3.ZERO
 var moving := false
+var aim_dir := Vector2.ZERO # where the player aims (used while leading)
+var returning := false # a follower running back inside the leash
+
+const HEAL_RANGE := 5.0
 
 var _attack_timer := 0.4
 var _heal_timer := 2.0
@@ -157,16 +161,47 @@ func _my_xz() -> Vector2:
 	return Vector2(position.x, position.z)
 
 
+func is_healer() -> bool:
+	return kind == "kheiron"
+
+
+## How close a follower gets to its target before stopping to fight.
+func engage_range() -> float:
+	match kind:
+		"solenne":
+			return 1.8
+		"cenhelm":
+			return 1.6
+		"kheiron":
+			return 7.0
+	return 2.0
+
+
+## Is any enemy inside a cone of `reach` and `half` angle around `dir`?
+func _enemy_in_arc(me: Vector2, dir: Vector2, reach: float, half: float) -> bool:
+	for i in Game.enemies.query(me, reach):
+		var rel: Vector2 = Game.enemies.pos[i] - me
+		if rel.length() < 0.001 or absf(dir.angle_to(rel)) <= half:
+			return true
+	return false
+
+
 func _attack_solenne() -> bool:
 	var reach := 3.0 * area_mult
 	var me := _my_xz()
-	var target: int = Game.enemies.nearest(me, reach + 0.6)
-	if target < 0:
-		return false
-	var to: Vector2 = Game.enemies.pos[target] - me
-	var dir := to.normalized()
-	var yaw := atan2(to.x, to.y)
 	var half := deg_to_rad(65.0)
+	var dir: Vector2
+	if is_leader and aim_dir != Vector2.ZERO:
+		# Leading: cut where the player aims, if anything is there.
+		dir = aim_dir
+		if not _enemy_in_arc(me, dir, reach, half):
+			return false
+	else:
+		var target: int = Game.enemies.nearest(me, reach + 0.6)
+		if target < 0:
+			return false
+		dir = (Game.enemies.pos[target] - me).normalized()
+	var yaw := atan2(dir.x, dir.y)
 	var dmg := _power()
 	for i in Game.enemies.query(me, reach):
 		var rel: Vector2 = Game.enemies.pos[i] - me
@@ -203,6 +238,8 @@ func _attack_kheiron() -> bool:
 	if target < 0:
 		return false
 	var to: Vector2 = (Game.enemies.pos[target] - me).normalized()
+	if is_leader and aim_dir != Vector2.ZERO:
+		to = aim_dir # leading: fire where the player aims
 	var count := 1 + extra_bolts
 	for b in count:
 		var spread := (b - (count - 1) * 0.5) * 0.18
@@ -219,11 +256,15 @@ func _tick_passives(delta: float) -> void:
 	if kind == "kheiron":
 		_heal_timer -= delta
 		if _heal_timer <= 0.0:
-			_heal_timer = 2.5
-			var t = Game.party.lowest_health_ally(self)
+			# Heal the most hurt ally within reach. If nobody is close enough,
+			# try again shortly (as a follower he walks over to them).
+			var t = _most_hurt_in_range()
 			if t != null:
 				t.heal(7.0 * heal_mult)
 				Game.fx.ring(t.position, 0.9, accent, 0.3)
+				_heal_timer = 2.5
+			else:
+				_heal_timer = 0.25
 	if kind == "solenne":
 		_contempt_hit_cd = maxf(0.0, _contempt_hit_cd - delta)
 		if contempt > 0:
@@ -231,6 +272,21 @@ func _tick_passives(delta: float) -> void:
 			if _contempt_decay <= 0.0:
 				contempt -= 1
 				_contempt_decay = 3.0
+
+
+func _most_hurt_in_range():
+	var best = null
+	var best_frac := 1.0
+	for h in Game.party.heroes:
+		if h == self or h.downed or h.kind == "kheiron":
+			continue
+		if position.distance_to(h.position) > HEAL_RANGE:
+			continue
+		var frac: float = h.hp / h.max_hp
+		if frac < best_frac:
+			best_frac = frac
+			best = h
+	return best
 
 
 # --- Health ------------------------------------------------------------------

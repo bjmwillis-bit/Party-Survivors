@@ -109,8 +109,8 @@ func effect_material(color: Color) -> StandardMaterial3D:
 
 # --- Input -------------------------------------------------------------------
 # Controls are set up in code so they work without touching Project Settings.
-# Keyboard: WASD or arrows to move, Space or Shift to swap.
-# Gamepad: left stick to move, A or right bumper to swap.
+# Keyboard and mouse: WASD or arrows to move, mouse to aim, Space or Shift to swap.
+# Gamepad: left stick to move, right stick to aim, A or right bumper to swap.
 
 func _setup_input() -> void:
 	_bind_keys("move_left", [KEY_A, KEY_LEFT])
@@ -121,6 +121,10 @@ func _setup_input() -> void:
 	_bind_axis("move_right", JOY_AXIS_LEFT_X, 1.0)
 	_bind_axis("move_up", JOY_AXIS_LEFT_Y, -1.0)
 	_bind_axis("move_down", JOY_AXIS_LEFT_Y, 1.0)
+	_bind_axis("aim_left", JOY_AXIS_RIGHT_X, -1.0)
+	_bind_axis("aim_right", JOY_AXIS_RIGHT_X, 1.0)
+	_bind_axis("aim_up", JOY_AXIS_RIGHT_Y, -1.0)
+	_bind_axis("aim_down", JOY_AXIS_RIGHT_Y, 1.0)
 	_bind_keys("swap", [KEY_SPACE, KEY_SHIFT])
 	_bind_button("swap", JOY_BUTTON_A)
 	_bind_button("swap", JOY_BUTTON_RIGHT_SHOULDER)

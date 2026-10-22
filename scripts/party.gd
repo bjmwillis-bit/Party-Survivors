@@ -1,11 +1,19 @@
 extends Node3D
-## The party of three: moving the leader, keeping followers in formation,
-## swapping who leads, sharing damage and reviving fallen heroes.
+## The party of three: moving and aiming the leader, the followers' AI
+## (hunting enemies, or healing), the leash, swapping who leads, shared
+## damage and reviving fallen heroes.
 
 const HeroScript := preload("res://scripts/hero.gd")
 
 const SWAP_COOLDOWN := 1.0
 const REVIVE_RANGE := 1.8
+## How far followers may roam from the leader, in metres
+## (about 10 hero widths, or two-thirds of the way to the screen edge).
+const LEASH := 8.0
+## A healer goes to an ally once their health drops below this fraction.
+const HEAL_SEEK_BELOW := 0.9
+## Below this health fraction a follower stops hunting and falls back.
+const RETREAT_BELOW := 0.35
 
 var heroes: Array = []
 var leader_index := 0
@@ -18,8 +26,13 @@ var haste := 1.0 # multiplies every hero's attack speed
 var lead_bonus := 1.2 # the leader deals 20% more damage
 var revive_time := 3.0
 
-var _form_yaw := 0.0 # the direction the formation faces; turns smoothly
+var aim_point := Vector3.ZERO # where the leader is aiming, on the ground
+
+var _form_yaw := 0.0 # direction of the resting formation; turns smoothly
 var _wiped := false
+var _using_stick := false # true after the right stick was last used to aim
+var _reticle: MeshInstance3D
+var _leash_ring: MeshInstance3D
 
 
 func _ready() -> void:
@@ -32,6 +45,13 @@ func _ready() -> void:
 	heroes[2].position = Vector3(1.0, 0.0, -1.4)
 	_set_leader(0, false)
 	swap_timer = 0.0
+	_reticle = _ground_ring(0.3, 0.42, Color(1.0, 0.9, 0.5, 0.9))
+	_leash_ring = _ground_ring(LEASH - 0.08, LEASH, Color(1.0, 1.0, 1.0, 0.12))
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		_using_stick = false
 
 
 func _process(delta: float) -> void:
@@ -41,8 +61,12 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("swap"):
 		swap()
 	_move_leader(delta)
+	_aim_leader()
 	_move_followers(delta)
+	_separate_heroes()
 	_tick_revive(delta)
+	var l = leader()
+	_leash_ring.position = Vector3(l.position.x, 0.04, l.position.z)
 
 
 # --- Lookups -----------------------------------------------------------------
@@ -68,12 +92,13 @@ func alive_heroes() -> Array:
 	return out
 
 
-## The living ally with the lowest health (as a fraction), not counting `exclude`.
-func lowest_health_ally(exclude):
+## The living ally with the lowest health (as a fraction), not counting
+## `exclude`, and only if they're below `below`. Returns null if nobody is.
+func lowest_health_ally(exclude, below := 1.0):
 	var best = null
-	var best_frac := 1.0
+	var best_frac := below
 	for h in heroes:
-		if h == exclude or h.downed:
+		if h == exclude or h.downed or h.kind == "kheiron": # Kheiron is Incurable
 			continue
 		var frac: float = h.hp / h.max_hp
 		if frac < best_frac:
@@ -82,7 +107,7 @@ func lowest_health_ally(exclude):
 	return best
 
 
-# --- Movement ----------------------------------------------------------------
+# --- Leader: moving and aiming -----------------------------------------------
 
 func _move_leader(delta: float) -> void:
 	var l = leader()
@@ -101,14 +126,62 @@ func _move_leader(delta: float) -> void:
 	var a: float = Game.main.ARENA_HALF
 	l.position.x = clampf(l.position.x, -a, a)
 	l.position.z = clampf(l.position.z, -a, a)
-	var yaw := atan2(dir.x, dir.z)
-	if l.face_lock <= 0.0:
-		l.facing = yaw
-	_form_yaw = lerp_angle(_form_yaw, yaw, 1.0 - exp(-7.0 * delta))
+	_form_yaw = lerp_angle(_form_yaw, atan2(dir.x, dir.z), 1.0 - exp(-7.0 * delta))
 
+
+## The leader always faces where the player aims: the mouse, or the right
+## stick on a gamepad. Their basic attack fires that way too.
+func _aim_leader() -> void:
+	var l = leader()
+	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
+	if stick.length() > 0.3:
+		_using_stick = true
+	var target = null
+	if Game.main.autopilot:
+		# The test bot "aims" at the nearest enemy.
+		var e: int = Game.enemies.nearest(Vector2(l.position.x, l.position.z), 30.0)
+		if e >= 0:
+			target = Vector3(Game.enemies.pos[e].x, 0.0, Game.enemies.pos[e].y)
+	elif _using_stick:
+		if stick.length() > 0.3:
+			target = l.position + Vector3(stick.x, 0.0, stick.y).normalized() * 4.0
+		else:
+			target = aim_point if aim_point != Vector3.ZERO else null
+	else:
+		target = _mouse_on_ground()
+	if target == null:
+		# No aim yet: face the way we're walking.
+		target = l.position + (l.move_dir if l.moving else Vector3(sin(l.facing), 0.0, cos(l.facing)))
+	aim_point = target
+	var to: Vector3 = aim_point - l.position
+	to.y = 0.0
+	if to.length() > 0.05:
+		l.aim_dir = Vector2(to.x, to.z).normalized()
+		l.facing = atan2(to.x, to.z)
+	_reticle.visible = not Game.main.autopilot and not l.downed
+	_reticle.position = Vector3(aim_point.x, 0.05, aim_point.z)
+
+
+func _mouse_on_ground():
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	if cam == null:
+		return null
+	var mouse := get_viewport().get_mouse_position()
+	var from := cam.project_ray_origin(mouse)
+	var dir := cam.project_ray_normal(mouse)
+	return Plane(Vector3.UP, 0.0).intersects_ray(from, dir)
+
+
+# --- Followers ---------------------------------------------------------------
+# Fighters hunt the nearest enemy inside the leash. Healers go to the ally
+# with the lowest health percentage, and otherwise stay back (they attack
+# from range). Badly hurt followers fall back behind the leader. With
+# nothing to do, followers rest in formation. Anyone past the leash runs
+# back first.
 
 func _move_followers(delta: float) -> void:
 	var l = leader()
+	var lxz := Vector2(l.position.x, l.position.z)
 	var forward := Vector3(sin(_form_yaw), 0.0, cos(_form_yaw))
 	var right := Vector3(forward.z, 0.0, -forward.x)
 	var slots := [
@@ -124,21 +197,71 @@ func _move_followers(delta: float) -> void:
 		if h.downed:
 			h.moving = false
 			continue
-		var to: Vector3 = slot - h.position
+		var hxz := Vector2(h.position.x, h.position.z)
+		var from_leader := hxz.distance_to(lxz)
+		if from_leader > LEASH:
+			h.returning = true
+		elif from_leader < LEASH * 0.6:
+			h.returning = false
+
+		var goal := slot
+		var stop := 0.06
+		var spd: float = speed * speed_mult * 1.1
+		if h.returning:
+			spd *= 1.4
+		elif h.is_healer():
+			var hurt = lowest_health_ally(h, HEAL_SEEK_BELOW)
+			if hurt != null:
+				goal = hurt.position
+				stop = 2.0
+		elif h.hp / h.max_hp < RETREAT_BELOW:
+			pass # fall back to the formation slot behind the leader
+		else:
+			var e := _hunt(hxz, lxz)
+			if e >= 0:
+				goal = Vector3(Game.enemies.pos[e].x, 0.0, Game.enemies.pos[e].y)
+				stop = h.engage_range()
+
+		var to: Vector3 = goal - h.position
 		to.y = 0.0
 		var d := to.length()
-		if d < 0.06:
+		if d <= stop:
 			h.moving = false
 			h.move_dir = Vector3.ZERO
 			continue
-		# Followers catch up fast and settle, instead of floating on elastic.
-		var spd := maxf(speed * speed_mult * 1.15, d * 9.0)
-		var step := minf(d, spd * delta)
+		# Resting in formation: catch up fast and settle crisply.
+		if goal == slot and not h.returning:
+			spd = maxf(spd, d * 9.0)
+		var step := minf(d - stop, spd * delta)
 		h.position += to / d * step
 		h.moving = step > speed * 0.25 * delta
 		h.move_dir = to / d
 		if h.face_lock <= 0.0 and h.moving:
 			h.facing = atan2(to.x, to.z)
+
+
+## Index of the enemy nearest to the follower, among enemies inside the leash.
+func _hunt(from: Vector2, leash_center: Vector2) -> int:
+	return Game.enemies.nearest_in_circle(from, leash_center, LEASH)
+
+
+## Stops heroes standing inside each other.
+func _separate_heroes() -> void:
+	for i in heroes.size():
+		for j in range(i + 1, heroes.size()):
+			var a = heroes[i]
+			var b = heroes[j]
+			if a.downed or b.downed:
+				continue
+			var d: Vector3 = b.position - a.position
+			d.y = 0.0
+			var l := d.length()
+			if l < 0.9 and l > 0.001:
+				var push := d / l * (0.9 - l) * 0.5
+				if not a.is_leader:
+					a.position -= push
+				if not b.is_leader:
+					b.position += push
 
 
 # --- Swapping ----------------------------------------------------------------
@@ -163,6 +286,7 @@ func _next_alive(from: int) -> int:
 func _set_leader(index: int, entrance: bool) -> void:
 	for h in heroes:
 		h.is_leader = false
+		h.returning = false
 	leader_index = index
 	var l = heroes[index]
 	l.is_leader = true
@@ -214,3 +338,20 @@ func _tick_revive(delta: float) -> void:
 				Game.fx.ring(h.position, 1.6, Color(0.6, 1.0, 0.6), 0.35)
 		else:
 			h.revive_progress = maxf(0.0, h.revive_progress - delta * 0.5)
+
+
+# --- Helpers -----------------------------------------------------------------
+
+func _ground_ring(inner: float, outer: float, color: Color) -> MeshInstance3D:
+	var ring := TorusMesh.new()
+	ring.inner_radius = inner
+	ring.outer_radius = outer
+	ring.rings = 48
+	ring.ring_segments = 3
+	var m := MeshInstance3D.new()
+	m.mesh = ring
+	m.material_override = Game.effect_material(color)
+	m.scale = Vector3(1.0, 0.05, 1.0)
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(m)
+	return m

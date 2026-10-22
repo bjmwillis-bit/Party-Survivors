@@ -70,7 +70,7 @@ func _ready() -> void:
 	party_box.add_child(_swap_label)
 
 	var hint := _label(18)
-	hint.text = "Move: WASD / left stick     Swap leader: Space / A     Revive: stand next to a fallen hero"
+	hint.text = "Move: WASD / left stick     Aim: mouse / right stick     Swap leader: Space / A     Revive: stand next to a fallen hero"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	hint.offset_left = -900
 	hint.offset_top = -48

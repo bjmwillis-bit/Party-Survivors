@@ -110,6 +110,22 @@ func nearest(center: Vector2, max_r: float) -> int:
 	return best
 
 
+## Index of the living enemy nearest to `from`, counting only enemies within
+## `radius` of `center` (used for followers on a leash), or -1.
+func nearest_in_circle(from: Vector2, center: Vector2, radius: float) -> int:
+	var best := -1
+	var best_d := INF
+	var r2 := radius * radius
+	for i in count:
+		if hp[i] <= 0.0 or center.distance_squared_to(pos[i]) > r2:
+			continue
+		var d := from.distance_squared_to(pos[i])
+		if d < best_d:
+			best_d = d
+			best = i
+	return best
+
+
 func damage(i: int, amount: float, dir: Vector2, force: float) -> void:
 	if i < 0 or i >= count or hp[i] <= 0.0:
 		return

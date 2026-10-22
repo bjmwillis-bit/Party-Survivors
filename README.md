@@ -15,11 +15,21 @@ This is **milestone 1**: a grey-box prototype to answer one question — is stee
 | Action | Keyboard | Gamepad |
 |---|---|---|
 | Move | WASD or arrow keys | Left stick |
+| Aim (the leader faces it) | Mouse | Right stick |
 | Swap leader | Space or Shift | A or right bumper |
 | Pick a level-up card | 1 / 2 / 3 or click | X / Y / B |
 | Restart after a run | R | Start |
 
 Fallen heroes get back up if the leader stands next to them for 3 seconds.
+
+## How the party behaves
+
+- **The leader** is yours: they face your mouse, and their basic attack fires where you aim.
+- **Followers** hunt the nearest enemies, but only inside the leash (the faint circle, 8 metres around the leader). Past it, they run back.
+- **The healer (Kheiron)** goes to whichever ally has the lowest health percentage, and otherwise stays back and fires from range.
+- **Badly hurt followers** (below 35% health) stop hunting and fall back behind the leader.
+
+Tuning numbers live at the top of `scripts/party.gd` (`LEASH`, `HEAL_SEEK_BELOW`, `RETREAT_BELOW`).
 
 ## The heroes (grey-box versions)
 
