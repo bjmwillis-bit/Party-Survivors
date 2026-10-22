@@ -56,6 +56,17 @@ func ring(origin: Vector3, radius: float, color: Color, life: float) -> void:
 	_temp(_ring, Color(color.r, color.g, color.b, 0.8), Vector3(origin.x, 0.08, origin.z), life, from, to, 0.0)
 
 
+## A long, thin flash straight ahead: Solenne's counter skewer.
+func thrust(origin: Vector3, yaw: float, length: float, color: Color) -> void:
+	var box := BoxMesh.new()
+	box.size = Vector3(0.25, 0.08, length)
+	var n := _temp(box, Color(color.r, color.g, color.b, 0.9), origin + Vector3(0.0, 0.9, 0.0), 0.16,
+		Vector3(1.0, 1.0, 0.6), Vector3(0.4, 1.0, 1.0), 0.0)
+	n.rotation.y = yaw
+	# Shift forward so the thrust starts at her and extends outwards.
+	n.position += Vector3(sin(yaw), 0.0, cos(yaw)) * length * 0.5
+
+
 func dust(origin: Vector3) -> void:
 	if _puffs_this_frame >= MAX_PUFFS_PER_FRAME:
 		return

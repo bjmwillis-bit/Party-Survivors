@@ -16,6 +16,7 @@ This is **milestone 1**: a grey-box prototype to answer one question — is stee
 |---|---|---|
 | Move | WASD or arrow keys | Left stick |
 | Aim (the leader faces it) | Mouse | Right stick |
+| Leader's skills | Q / E | Left bumper / left trigger |
 | Swap leader | Space or Shift | A or right bumper |
 | Pick a level-up card | 1 / 2 / 3 or click | X / Y / B |
 | Restart after a run | R | Start |
@@ -33,11 +34,21 @@ Tuning numbers live at the top of `scripts/party.gd` (`LEASH`, `HEAL_SEEK_BELOW`
 
 ## The heroes (grey-box versions)
 
-- **Solenne**: cuts in an arc. Gains Contempt when struck (+5% damage per stack).
-- **Cenhelm**: slams everything around him; damage scales with his max HP. Takes 25% of every hit aimed at his allies.
-- **Kheiron**: fires bolts and heals the most hurt ally. He is Incurable: nothing heals him.
+Basic attacks fire on their own at each hero's attack speed. The leader's Q and E are yours to cast; followers cast theirs the moment they're ready and would do something.
 
-The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst.
+**Solenne**: slashes in an arc. Gains Contempt when struck (+5% damage per stack).
+- Q, *I'll Give You My Back* (passive): 30% chance when struck to counter with a skewer that pierces up to 4 enemies.
+- E, *Face Me* (16 s): taunts enemies within 6 m for 6 s, and she takes 40% less damage.
+
+**Cenhelm**: left-right punches, each splashing where it lands. Damage scales with his max HP. Takes 25% of hits aimed at his allies.
+- Q, *The Gate* (10 s): ground slam around him. Every punch takes 1 s off the cooldown.
+- E, *Walk Out* (12 s): dashes to an ally (the one nearest your aim when you lead him), stunning enemies on the way for 1.5 s.
+
+**Kheiron**: fires bolts. Incurable: nothing heals him.
+- Q, *Lesson* (4 s): heals the most hurt ally for 10% of their max health.
+- E, *The Grove* (14 s): a leash-sized grove at his feet for 4 s; allies inside heal 3% of max health per second. Followers fight inside it and stand in it.
+
+The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst. Ultimates come later.
 
 ## Project layout
 

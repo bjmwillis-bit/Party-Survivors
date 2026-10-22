@@ -15,6 +15,7 @@ const SCALE := [1.0, 0.75]
 const KNOCK_TAKEN := [1.0, 1.4]
 const COLORS := [Color(0.36, 0.22, 0.2), Color(0.58, 0.44, 0.24)]
 const CONTACT_DPS := 9.0
+const STUN_TINT := Color(0.6, 0.72, 1.0)
 
 var count := 0
 var pos := PackedVector2Array() # x and z on the ground
@@ -24,6 +25,9 @@ var flash := PackedFloat32Array()
 var kind := PackedByteArray()
 var yaw := PackedFloat32Array()
 var sep := PackedVector2Array() # last push-apart force (recomputed every other frame)
+var stun_t := PackedFloat32Array() # seconds left stunned
+var taunt_t := PackedFloat32Array() # seconds left taunted
+var taunt_hero := PackedByteArray() # which hero (index in the party) taunted them
 
 ## How long the horde took last frame, in milliseconds (for tuning).
 var cost_ms := 0.0
@@ -44,6 +48,9 @@ func _ready() -> void:
 	kind.resize(MAX_ENEMIES)
 	yaw.resize(MAX_ENEMIES)
 	sep.resize(MAX_ENEMIES)
+	stun_t.resize(MAX_ENEMIES)
+	taunt_t.resize(MAX_ENEMIES)
+	taunt_hero.resize(MAX_ENEMIES)
 	_buffer.resize(MAX_ENEMIES * 16)
 
 	var body := CapsuleMesh.new()
@@ -126,6 +133,35 @@ func nearest_in_circle(from: Vector2, center: Vector2, radius: float) -> int:
 	return best
 
 
+## Like nearest_in_circle, but the enemy must also be inside a second circle
+## (used when followers want to fight inside Kheiron's grove).
+func nearest_in_two_circles(from: Vector2, c1: Vector2, r1: float, c2: Vector2, r2: float) -> int:
+	var best := -1
+	var best_d := INF
+	var r1s := r1 * r1
+	var r2s := r2 * r2
+	for i in count:
+		if hp[i] <= 0.0 or c1.distance_squared_to(pos[i]) > r1s or c2.distance_squared_to(pos[i]) > r2s:
+			continue
+		var d := from.distance_squared_to(pos[i])
+		if d < best_d:
+			best_d = d
+			best = i
+	return best
+
+
+func stun(i: int, seconds: float) -> void:
+	if i >= 0 and i < count:
+		stun_t[i] = maxf(stun_t[i], seconds)
+
+
+## Makes every enemy within `r` of `center` go after one hero for a while.
+func taunt_in_radius(center: Vector2, r: float, hero_index: int, seconds: float) -> void:
+	for i in query(center, r):
+		taunt_hero[i] = hero_index
+		taunt_t[i] = seconds
+
+
 func damage(i: int, amount: float, dir: Vector2, force: float) -> void:
 	if i < 0 or i >= count or hp[i] <= 0.0:
 		return
@@ -152,6 +188,9 @@ func _remove_dead() -> void:
 			kind[i] = kind[last]
 			yaw[i] = yaw[last]
 			sep[i] = sep[last]
+			stun_t[i] = stun_t[last]
+			taunt_t[i] = taunt_t[last]
+			taunt_hero[i] = taunt_hero[last]
 			count -= 1
 		i -= 1
 
@@ -183,6 +222,9 @@ func _spawn(delta: float) -> void:
 		kind[count] = k
 		yaw[count] = 0.0
 		sep[count] = Vector2.ZERO
+		stun_t[count] = 0.0
+		taunt_t[count] = 0.0
+		taunt_hero[count] = 0
 		count += 1
 	if count >= MAX_ENEMIES:
 		_spawn_acc = 0.0
@@ -200,30 +242,46 @@ func _rebuild_grid() -> void:
 
 
 func _move(delta: float) -> void:
-	var targets: Array = Game.party.alive_heroes()
-	if targets.is_empty():
+	var heroes: Array = Game.party.heroes
+	var alive: Array[bool] = []
+	var hero_xz: Array[Vector2] = []
+	var any_alive := false
+	for h in heroes:
+		alive.append(not h.downed)
+		hero_xz.append(Vector2(h.position.x, h.position.z))
+		any_alive = any_alive or not h.downed
+	if not any_alive:
 		return
-	var target_xz: Array[Vector2] = []
-	for h in targets:
-		target_xz.append(Vector2(h.position.x, h.position.z))
 	var touching := PackedInt32Array()
-	touching.resize(targets.size())
+	touching.resize(heroes.size())
 	var decay := exp(-7.0 * delta)
 
 	for i in count:
 		var p: Vector2 = pos[i]
-		# Head for the nearest living hero.
-		var best := 0
+		# Head for the hero who taunted us, otherwise the nearest living hero.
+		var best := -1
 		var best_d := INF
-		for h in target_xz.size():
-			var dd := p.distance_squared_to(target_xz[h])
-			if dd < best_d:
-				best_d = dd
-				best = h
+		if taunt_t[i] > 0.0:
+			taunt_t[i] -= delta
+			var th := int(taunt_hero[i])
+			if th < heroes.size() and alive[th]:
+				best = th
+				best_d = p.distance_squared_to(hero_xz[th])
+		if best < 0:
+			for h in hero_xz.size():
+				if not alive[h]:
+					continue
+				var dd := p.distance_squared_to(hero_xz[h])
+				if dd < best_d:
+					best_d = dd
+					best = h
 		var dist := sqrt(best_d)
 		var v := Vector2.ZERO
-		if dist > 0.6:
-			v = (target_xz[best] - p) / dist * SPEED[kind[i]]
+		var stunned := stun_t[i] > 0.0
+		if stunned:
+			stun_t[i] -= delta
+		elif dist > 0.6:
+			v = (hero_xz[best] - p) / dist * SPEED[kind[i]]
 		# Push away from neighbours so the horde spreads instead of stacking.
 		# Half the horde recalculates each frame; the rest reuse last frame's push.
 		if (i + _frame) % 2 == 0:
@@ -249,16 +307,16 @@ func _move(delta: float) -> void:
 		if v.length_squared() > 0.01:
 			yaw[i] = atan2(v.x, v.y)
 		flash[i] = maxf(0.0, flash[i] - delta)
-		if dist < 0.9:
+		if dist < 0.9 and not stunned:
 			touching[best] += 1
 
 	# Contact damage grows with the crowd, but not linearly, so being
 	# surrounded is dangerous without being instant death.
 	var toughness := 1.0 + Game.time_alive / 400.0
-	for h in targets.size():
-		if touching[h] > 0:
+	for h in heroes.size():
+		if touching[h] > 0 and alive[h]:
 			var crowd := pow(float(mini(touching[h], 5)), 0.7)
-			Game.party.apply_contact_damage(targets[h], CONTACT_DPS * crowd * toughness * delta)
+			Game.party.apply_contact_damage(heroes[h], CONTACT_DPS * crowd * toughness * delta)
 
 
 func _render() -> void:
@@ -271,7 +329,11 @@ func _render() -> void:
 		var c := cos(yaw[i]) * s
 		var sn := sin(yaw[i]) * s
 		var y := 0.65 * s + absf(sin(_time * 9.0 + float(i))) * 0.08
-		var col: Color = Color.WHITE if flash[i] > 0.0 else COLORS[k]
+		var col: Color = COLORS[k]
+		if flash[i] > 0.0:
+			col = Color.WHITE
+		elif stun_t[i] > 0.0:
+			col = STUN_TINT
 		var o := i * 16
 		_buffer[o] = c
 		_buffer[o + 1] = 0.0

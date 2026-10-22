@@ -41,6 +41,11 @@ func _process(_delta: float) -> bool:
 		main.choose_upgrade(0)
 	if _frames % 240 == 0:
 		game.party.swap()
+	# The bot casts the leader's skills whenever they're ready.
+	var leader = game.party.leader()
+	if leader != null:
+		leader.cast("q")
+		leader.cast("e")
 	_peak_enemies = maxi(_peak_enemies, game.enemies.count)
 	if _frames % int(OS.get_environment("SMOKE_EVERY") if OS.has_environment("SMOKE_EVERY") else "3600") == 0:
 		var hps := []
@@ -65,4 +70,6 @@ func _report(main, game) -> void:
 	print("RESULT: %s at %ds, kills %d, level %d, peak enemies %d" % [
 		"victory" if game.time_alive >= main.RUN_LENGTH else ("party fell" if main.ended else "stopped early"),
 		int(game.time_alive), game.kills, main.level, _peak_enemies])
+	for h in game.party.heroes:
+		print("SKILLS %s: Q x%d, E x%d, counters x%d" % [h.hero_name, h.stats["q"], h.stats["e"], h.stats["counter"]])
 	print("FRAME (script cost, no rendering): avg %.2f ms, 99th percentile %.2f ms" % [avg, p99])

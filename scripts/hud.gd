@@ -7,6 +7,7 @@ var _timer_label: Label
 var _info_label: Label
 var _xp_bar: ProgressBar
 var _swap_label: Label
+var _skill_slots: Array = [] # the leader's Q and E boxes
 var _rows: Array = []
 var _levelup: Control
 var _levelup_title: Label
@@ -70,7 +71,7 @@ func _ready() -> void:
 	party_box.add_child(_swap_label)
 
 	var hint := _label(18)
-	hint.text = "Move: WASD / left stick     Aim: mouse / right stick     Swap leader: Space / A     Revive: stand next to a fallen hero"
+	hint.text = "Move: WASD     Aim: mouse     Skills: Q / E     Swap leader: Space     Revive: stand next to a fallen hero"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	hint.offset_left = -900
 	hint.offset_top = -48
@@ -80,6 +81,7 @@ func _ready() -> void:
 	hint.modulate = Color(1, 1, 1, 0.7)
 	root.add_child(hint)
 
+	_build_skill_bar(root)
 	_build_levelup(root)
 	_build_end(root)
 
@@ -102,12 +104,18 @@ func _process(_delta: float) -> void:
 				bits.append("LEADING")
 			if h.kind == "solenne" and h.contempt > 0:
 				bits.append("Contempt %d" % h.contempt)
+			if not h.is_leader:
+				for slot in ["q", "e"]:
+					if not h.skill_is_passive(slot):
+						var left: float = h.cooldown[slot]
+						bits.append("%s %s" % [slot.to_upper(), "ready" if left <= 0.0 else "%ds" % ceili(left)])
 		r["status"].text = "   ".join(bits)
 		r["bar"].modulate = Color(1, 1, 1, 0.35) if h.downed else Color.WHITE
 
 	var cd: float = Game.party.swap_timer
 	_swap_label.text = "Swap ready" if cd <= 0.0 else "Swap in %.1fs" % cd
 	_swap_label.modulate = Color(1.0, 0.85, 0.4) if cd <= 0.0 else Color(1, 1, 1, 0.5)
+	_update_skill_bar()
 
 	if _levelup.visible:
 		for k in 3:
@@ -116,6 +124,64 @@ func _process(_delta: float) -> void:
 				break
 	elif _end.visible and Input.is_action_just_pressed("restart"):
 		main.restart()
+
+
+# --- Leader's skill bar ------------------------------------------------------
+
+func _build_skill_bar(root: Control) -> void:
+	var bar := HBoxContainer.new()
+	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	bar.offset_left = -330
+	bar.offset_right = 330
+	bar.offset_top = -120
+	bar.offset_bottom = -24
+	bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	bar.add_theme_constant_override("separation", 16)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(bar)
+	for slot in ["q", "e"]:
+		var panel := PanelContainer.new()
+		panel.custom_minimum_size = Vector2(300, 90)
+		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.0, 0.0, 0.0, 0.55)
+		style.border_color = Color(1.0, 0.85, 0.4)
+		style.set_border_width_all(2)
+		style.set_corner_radius_all(6)
+		style.content_margin_left = 12
+		style.content_margin_right = 12
+		panel.add_theme_stylebox_override("panel", style)
+		var label := _label(22)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		panel.add_child(label)
+		bar.add_child(panel)
+		_skill_slots.append({"slot": slot, "panel": panel, "style": style, "label": label})
+
+
+func _update_skill_bar() -> void:
+	var l = Game.party.leader()
+	if l == null:
+		return
+	for s in _skill_slots:
+		var slot: String = s["slot"]
+		var name: String = l.skill_name(slot)
+		var style: StyleBoxFlat = s["style"]
+		if l.skill_is_passive(slot):
+			s["label"].text = "[%s]  %s\n(passive)" % [slot.to_upper(), name]
+			s["panel"].modulate = Color(1, 1, 1, 0.6)
+			style.border_color = Color(0.6, 0.6, 0.6)
+			continue
+		var left: float = l.cooldown[slot]
+		if left <= 0.0:
+			s["label"].text = "[%s]  %s\nready" % [slot.to_upper(), name]
+			s["panel"].modulate = Color.WHITE
+			style.border_color = Color(1.0, 0.85, 0.4)
+		else:
+			s["label"].text = "[%s]  %s\n%.1fs" % [slot.to_upper(), name, left]
+			s["panel"].modulate = Color(1, 1, 1, 0.55)
+			style.border_color = Color(0.4, 0.4, 0.4)
 
 
 # --- Level up ----------------------------------------------------------------
