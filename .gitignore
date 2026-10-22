@@ -9,3 +9,6 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Web build output (published to the gh-pages branch instead)
+/build/
