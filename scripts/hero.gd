@@ -87,6 +87,15 @@ var hit_at_ms := -100000
 ## Ranged kiting: where this follower is heading between shots.
 var kite_spot := Vector3.ZERO
 var kite_timer := 0.0
+## Melee follower AI (see party.gd _melee).
+const HURT_WINDOW := 1.5 # seconds that health loss is averaged over
+## How fast this hero is losing health, as a fraction of max health per
+## second, averaged over the last second and a half. Healing counts against it.
+var hurt_rate := 0.0
+var breaking := 0.0 # seconds left of breaking away from a crowd
+var ai_aim := Vector2.ZERO # when set, a follower's next skill goes this way
+var melee_target := -1
+var melee_side := Vector2.ZERO # which side of its target a follower stands on
 ## Sitting by the fire: 0 standing, 1 seated on a log (blends while getting up).
 var sit := 0.0
 var seat_raise := 0.0 # how far the model lifts to sit on the log
@@ -131,6 +140,8 @@ func _process(delta: float) -> void:
 	_flash = maxf(0.0, _flash - delta)
 	_hurt_flash_cd = maxf(0.0, _hurt_flash_cd - delta)
 	face_lock = maxf(0.0, face_lock - delta)
+	hurt_rate *= exp(-delta / HURT_WINDOW)
+	breaking = maxf(0.0, breaking - delta)
 	taunt_time = maxf(0.0, taunt_time - delta)
 	damage_buff_t = maxf(0.0, damage_buff_t - delta)
 	for slot in cooldown:
@@ -368,6 +379,31 @@ func engage_range() -> float:
 	return float(data.get("engage", 2.0))
 
 
+## How close is too close (Cael's sweeps miss the near 3 m).
+func min_reach() -> float:
+	return float(data.get("min_reach", 0.0)) * area()
+
+
+## A follower breaks away once it's losing health faster than this
+## (fraction of max health per second).
+func nerve() -> float:
+	return float(data.get("nerve", 0.06))
+
+
+## Followers fire their skill as they break away, if it helps them get out.
+## `away` points the way out.
+func escape_skill(away: Vector2) -> void:
+	var how: String = data.get("escape", "")
+	if how == "" or cooldown["q"] > 0.0 or dashing:
+		return
+	if how == "toward":
+		ai_aim = away
+	elif how == "back":
+		ai_aim = -away
+	cast("q")
+	ai_aim = Vector2.ZERO
+
+
 # --- Skill (Q) and ultimate (E) -----------------------------------------------
 
 func skill_name(slot: String) -> String:
@@ -416,6 +452,7 @@ func take_damage(amount: float) -> void:
 	if downed or invulnerable:
 		return
 	hp -= amount
+	hurt_rate += amount / max_hp / HURT_WINDOW
 	hit_at_ms = Time.get_ticks_msec()
 	if _hurt_flash_cd <= 0.0:
 		_flash = 0.08
@@ -442,7 +479,9 @@ func heal(amount: float) -> void:
 		return
 	if is_healer():
 		amount *= HEALING_ON_HEALER
+	var before := hp
 	hp = minf(max_hp, hp + amount)
+	hurt_rate = maxf(0.0, hurt_rate - (hp - before) / max_hp / HURT_WINDOW)
 
 
 func revive() -> void:

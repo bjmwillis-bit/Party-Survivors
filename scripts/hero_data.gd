@@ -5,6 +5,13 @@ extends RefCounted
 ##
 ## Damage words from the design ("modest", "medium", "high") are multipliers
 ## of the hero's basic attack: modest ×0.8, medium ×1.5, high ×3.
+##
+## Follower AI (melee heroes): "engage" is how far from its target a hero
+## likes to stand; "min_reach" keeps Cael out of his own dead zone; "nerve"
+## is how fast a hero can lose health (fraction of max health per second)
+## before breaking away from a crowd; "escape" says how their skill helps
+## them break away: "toward" (aimed the way out), "back" (aimed at the
+## crowd, hopping away from it), "spin" or "leap" (fired as it is).
 
 const ORDER := ["solenne", "cenhelm", "kheiron", "halvar", "niten", "bram", "rhian", "levana", "cael"]
 
@@ -17,7 +24,7 @@ const HEROES := {
 			"desc": "Taunts enemies within 6 m for 8 s. While taunting, every blow she takes has a 30% chance to counter with a 6 m stab."},
 		"ult": {"name": "Ultrix", "cd": 40.0,
 			"desc": "Slashes once across, then forwards: ×3 damage with each strike."},
-		"engage": 1.8,
+		"engage": 1.8, "nerve": 0.10,
 		"sect": "Knights Templar", "line": "No helmet, no shield. One sword, two blades on one hilt.",
 		"role": "Duelist. Holds the horde's attention and cuts back.",
 		"model": {"file": "characters/Knight.glb", "scale": 0.8, "hide": ["Knight_Helmet", "Knight_HelmetVisor"], "right": "weapons/sword_1handed.gltf"},
@@ -36,7 +43,7 @@ const HEROES := {
 			"desc": "Leaps to the furthest enemy within 8 m: ×1.5 damage in 4 m where he lands."},
 		"ult": {"name": "The Horn", "cd": 45.0,
 			"desc": "After a 0.5 s wind-up, the whole screen is slowed 40% for 6 s, takes ×0.5 every second, and is pushed 0.5 m away each tick."},
-		"engage": 1.5,
+		"engage": 1.5, "nerve": 0.10, "escape": "leap",
 		"sect": "The Horn", "line": "Bare hands. A horn. He walks out for his people.",
 		"role": "Bruiser. One-two punches, a leap into the thick of it, and the Horn.",
 		"model": {"file": "characters/Barbarian.glb", "scale": 0.95, "hide": [], "right": ""},
@@ -76,7 +83,7 @@ const HEROES := {
 			"desc": "Dashes forward through a line, then spins: ×0.8 damage with each, and both cause bleeding."},
 		"ult": {"name": "Hall of Axes", "cd": 35.0,
 			"desc": "+50% attack speed for 8 s, and his axes come back faster."},
-		"engage": 4.0,
+		"engage": 4.0, "nerve": 0.06, "escape": "toward",
 		"sect": "Viking", "line": "Twin hooks, already in the chest. Hunger on his face.",
 		"role": "Bleeder. Throws two axes that land and fly back, cutting both ways. Every hit bleeds (15% of his attack a second for 4 s).",
 		"model": {"file": "characters/Barbarian.glb", "scale": 0.9, "hide": ["Barbarian_BearHat"], "right": "weapons/axe_1handed.gltf", "left": "weapons/axe_1handed.gltf", "tint": Color(0.85, 0.9, 1.0)},
@@ -95,7 +102,7 @@ const HEROES := {
 			"desc": "Two slices 0.6 s apart, each sending a 90° wave 8 m forward (×1.5). He hops back 1 m with each."},
 		"ult": {"name": "Heaven Strike", "cd": 40.0,
 			"desc": "After 0.5 s, lightning strikes the toughest enemy in sight (bosses first): ×3 damage within 4 m."},
-		"engage": 2.4,
+		"engage": 2.4, "nerve": 0.06, "escape": "back",
 		"sect": "Samurai", "line": "Two swords. He arrives last. The page is already written.",
 		"role": "Duelist. Slow, heavy cuts: a wide swing, then a stab.",
 		"model": {"file": "characters/Rogue.glb", "scale": 0.8, "hide": [], "right": "weapons/sword_1handed.gltf", "left": "weapons/sword_1handed.gltf", "tint": Color(0.8, 0.8, 0.95)},
@@ -134,7 +141,7 @@ const HEROES := {
 			"desc": "Spins her glaive: everything within 7 m is knocked back to 7 m and takes ×0.8."},
 		"ult": {"name": "The Line", "cd": 40.0,
 			"desc": "A battle cry, then three lightning stabs: to the furthest enemy in the leash and on from there twice, ×2.5 to everything she passes."},
-		"engage": 3.2,
+		"engage": 3.2, "nerve": 0.06, "escape": "spin",
 		"sect": "—", "line": "Cropped coat, a glaive longer than she is, a scar through the brow.",
 		"role": "Lancer. Each stab that lands makes the next come 20% faster (up to 5 times), as long as she keeps hitting.",
 		"model": {"file": "characters/Knight.glb", "scale": 0.8, "hide": ["Knight_Helmet", "Knight_HelmetVisor", "Knight_Cape"], "right": "weapons/staff.gltf", "tint": Color(1.0, 0.85, 0.9)},
@@ -173,7 +180,7 @@ const HEROES := {
 			"desc": "Throws his spear at the thickest crowd within 8 m (×0.8 in 2 m), then leaps to it, untouchable: ×1.5 in 4 m when he lands."},
 		"ult": {"name": "Skyfall", "cd": 40.0,
 			"desc": "Leaps into the air, untouchable. A target drifts toward the cursor; after 4 s (or press E again) he lands: ×3 in 2 m, ×1.5 in 6 m."},
-		"engage": 4.5,
+		"engage": 4.5, "nerve": 0.04, "min_reach": 3.2,
 		"sect": "The Roof", "line": "Lean, early twenties, long spear, riding leathers, a thin scarf.",
 		"role": "Skirmisher. Sweeps the far end of a long reach (3–6 m), and drops in from above.",
 		"model": {"file": "characters/Ranger.glb", "scale": 0.8, "hide": [], "right": "weapons/staff.gltf"},

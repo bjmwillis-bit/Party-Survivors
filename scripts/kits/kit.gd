@@ -101,6 +101,8 @@ func at3(p: Vector2, y := 0.0) -> Vector3:
 func aim(reach: float) -> Vector2:
 	if h.is_leader and h.aim_dir != Vector2.ZERO:
 		return h.aim_dir
+	if not h.is_leader and h.ai_aim != Vector2.ZERO:
+		return h.ai_aim
 	var t: int = Game.enemies.nearest(me(), reach)
 	if t < 0:
 		return Vector2.ZERO

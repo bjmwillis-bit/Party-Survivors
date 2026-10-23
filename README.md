@@ -48,11 +48,13 @@ The screen's edge glows red when anyone drops below 30%, pulsing harder the lowe
 
 - **The leader** is yours: they face your mouse, and their basic attack fires where you aim.
 - **Followers** hunt the nearest enemies, but only inside the leash (the faint circle, 8 metres around the leader). Past it, they run back.
-- **Ranged followers (Kheiron) kite.** When their shot is ready they get in range and fire; while it reloads they slip to the nearby spot with the fewest enemies, keeping their target in range and staying inside the leash. Melee followers keep diving in.
+- **Ranged followers (Kheiron, Bram, Levana) kite.** When their shot is ready they get in range and fire; while it reloads they slip to the nearby spot with the fewest enemies, keeping their target in range and staying inside the leash.
+- **Melee followers keep moving while they fight.** They pick a target on the edge of the crowd (close by, few enemies round it) and stand on its quietest side, just inside their reach, re-judging three times a second. Stepping out of an enemy's reach resets its wind-up. It's all judged relative to what's around them, so it works the same against 20 enemies or 2,000.
+- **Nerve:** if a melee follower is losing health faster than it can take (Solenne and Cenhelm 10% of their health a second, Halvar, Niten and Rhian 6%, Cael 4%), it breaks away toward thinner ground near the group for a moment, firing its skill if that helps it get out (Halvar dashes out, Niten's waves push the crowd back as he hops away, Rhian spins, Cenhelm leaps), then goes back to fighting from the edge. Health loss is averaged over 1.5 s and healing counts against it, so a hero being healed can hold a big crowd. Numbers are in `scripts/hero_data.gd` (`nerve`, `escape`).
 - **The healer (Kheiron)** also stays within 5 m of whoever is hurt the most.
-- **Badly hurt followers** (below 35% health) stop hunting and fall back behind the leader.
+- **Badly hurt followers** (below 35% health) stop hunting and go to Kheiron (or into a grove) if he's in the party, otherwise fall back behind the leader.
 
-Tuning numbers live at the top of `scripts/party.gd` (`LEASH`, `HEAL_SEEK_BELOW`, `RETREAT_BELOW`, and the `KITE_` numbers).
+Tuning numbers live at the top of `scripts/party.gd` (`LEASH`, `HEAL_SEEK_BELOW`, `RETREAT_BELOW`, the `KITE_` and `MELEE_` numbers).
 
 ## The heroes
 
@@ -106,6 +108,7 @@ The leader deals 20% more damage. Swapping has a 1-second cooldown and a small e
 - **Swarms:** every 500 kills, a minute of double spawning, mostly tiny swarmlings.
 - **Treasure goblin:** every 3rd chest opened sends one running. Catch it for gold before it escapes (20 s).
 - **Followers** focus elites, bosses and goblins when one is inside the leash.
+- **Enemy blows:** an enemy that reaches a hero strikes after 0.25 s, then every 0.5 s while it stays in reach. Stepping out of reach resets that first wait.
 - **Damage numbers** show for big hits and for hits on elites and bosses (a settings toggle comes with the menu).
 - Gold is counted per run for now. The end screen shows a placeholder "next unlock".
 
@@ -149,6 +152,7 @@ Party cards (up to 5 each): Might, Haste, Vigour, Swiftness, Keen Eyes, Reach, F
 - `scripts/`: one script per system (arena, camp, campfire interface, results, party, hero, enemies, XP, effects, HUD, upgrades, barks, ui_kit for shared menu styling). Each file starts with a comment explaining what it does.
 - `tests/smoke_test.gd`: a bot that plays a full run without a window and reports how it went. Run it with:
   `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd` (tests skip the campfire and never touch your save)
+- `tests/follower_test.gd`: compares the melee follower AI with the old "walk up and stand there" behaviour. The first hero leads all night, so the other two are followers throughout. `PARTY=kheiron,halvar,rhian MELEE_AI=old` (or `new`).
 - `tests/all_cards_test.gd`: switches on every card at once and plays two minutes, to catch broken card effects.
 
 ## Placeholder art

@@ -21,6 +21,12 @@ const KITE_KEEP_RANGE := 0.75 # stay within this fraction of shooting range
 const KITE_RETHINK := 0.3 # seconds between choosing a new spot
 ## A healer stays within this of the ally who needs them.
 const HEALER_STAY_NEAR := 5.0
+## Melee followers (see _melee).
+const MELEE_RETHINK := 0.3 # seconds between choosing a target and a side
+const MELEE_SEEK := 6.0 # how far round them they look for a target
+const MELEE_SAMPLES := 16 # at most this many candidate targets are judged
+const MELEE_CROWD := 2.5 # enemies within this of a spot count against it
+const BREAK_TIME := 1.2 # seconds spent breaking away from a crowd
 
 var heroes: Array = []
 var leader_index := 0
@@ -47,6 +53,9 @@ var groves: Array = []
 var bonds := {}
 ## Bram's anvils: {pos, radius, time, bonus, node}.
 var anvils: Array = []
+## The melee follower AI from 23 Oct. False restores the old "walk up and
+## stand there" behaviour (tests compare the two).
+var melee_ai := true
 
 var _form_yaw := 0.0 # direction of the resting formation; turns smoothly
 var _wiped := false
@@ -315,7 +324,12 @@ func _move_followers(delta: float) -> void:
 			else:
 				goal = h.position
 		elif low:
-			pass # fall back to the formation slot behind the leader
+			# Hurt: go to the healer if there is one, otherwise fall back to the
+			# formation slot behind the leader.
+			var medic = _healer_for(h)
+			if medic != null:
+				goal = medic.position
+				stop = 1.8
 		elif h.is_ranged():
 			var hurt = lowest_health_ally(h, HEAL_SEEK_BELOW) if h.is_healer() else null
 			if hurt != null and h.position.distance_to(hurt.position) > HEALER_STAY_NEAR:
@@ -327,6 +341,11 @@ func _move_followers(delta: float) -> void:
 					var k = _kite(h, e, lxz, hurt, delta)
 					goal = k[0]
 					stop = k[1]
+		elif melee_ai:
+			var m := _melee(h, lxz, delta)
+			if not m.is_empty():
+				goal = m[0]
+				stop = m[1]
 		else:
 			var e := _hunt(hxz, lxz)
 			if e >= 0:
@@ -360,6 +379,128 @@ func _move_followers(delta: float) -> void:
 		h.move_dir = to / d
 		if h.face_lock <= 0.0 and h.moving:
 			h.facing = atan2(to.x, to.z)
+
+
+## Melee followers keep moving while they fight. They pick a target on the
+## edge of the crowd (few enemies round it, not far away), then stand on its
+## quietest side, just inside their reach, re-judging a few times a second.
+## If they're losing health faster than their nerve allows, they break away
+## toward thinner ground near the group for a moment (firing their skill if
+## it helps), then go back to fighting from the edge. Everything is judged
+## relative to what's around, so it works the same with 20 enemies or 2,000.
+## Returns [goal, stop distance], or [] when there's nothing to fight.
+func _melee(h, lxz: Vector2, delta: float) -> Array:
+	var hxz := Vector2(h.position.x, h.position.z)
+	if h.breaking <= 0.0 and h.hurt_rate > h.nerve():
+		h.breaking = BREAK_TIME
+		var spot := _escape_spot(hxz, lxz)
+		h.kite_spot = Vector3(spot.x, 0.0, spot.y)
+		h.melee_target = -1
+		if spot.distance_to(hxz) > 0.1:
+			h.escape_skill((spot - hxz).normalized())
+	if h.breaking > 0.0:
+		return [h.kite_spot, 0.15]
+
+	var E = Game.enemies
+	var t: int = h.melee_target
+	var valid: bool = t >= 0 and t < E.count and E.hp[t] > 0.0 and E.pos[t].distance_to(lxz) <= LEASH + 1.0
+	h.kite_timer -= delta
+	if h.kite_timer <= 0.0 or not valid:
+		h.kite_timer = MELEE_RETHINK
+		t = _edge_target(hxz, lxz, t if valid else -1)
+		h.melee_target = t
+		if t >= 0:
+			h.melee_side = _quiet_side(h, hxz, E.pos[t], lxz)
+	if t < 0:
+		return []
+	var txz: Vector2 = E.pos[t]
+	# Big enemies are wider, so stand a little further out from their middle.
+	var body: float = 0.35 * (E.SCALE[E.kind[t]] - 1.0)
+	var at: Vector2 = txz + h.melee_side * (_stand_off(h) + body)
+	return [Vector3(at.x, 0.0, at.y), 0.15]
+
+
+## How far from its target a melee hero stands: well inside its reach, and
+## outside Cael's dead zone.
+func _stand_off(h) -> float:
+	return maxf(h.engage_range() * 0.75, h.min_reach() + 0.8)
+
+
+## A target on the edge of the crowd: near the hero, with few others round it.
+## Elites, bosses and goblins in the leash still come first.
+func _edge_target(hxz: Vector2, lxz: Vector2, current: int) -> int:
+	var E = Game.enemies
+	var big: int = E.best_target_in_circle(hxz, lxz, LEASH)
+	if big >= 0 and E.kind[big] >= E.ELITE:
+		return big
+	var near: Array = E.query(hxz, MELEE_SEEK)
+	if near.is_empty():
+		return _hunt(hxz, lxz)
+	var stride := maxi(1, near.size() / MELEE_SAMPLES)
+	var best := -1
+	var best_score := INF
+	for n in range(0, near.size(), stride):
+		var i: int = near[n]
+		var p: Vector2 = E.pos[i]
+		if p.distance_to(lxz) > LEASH:
+			continue
+		var score: float = hxz.distance_to(p) + 0.6 * float(E.query(p, MELEE_CROWD).size())
+		if i == current:
+			score -= 1.0 # don't flit between targets
+		if score < best_score:
+			best_score = score
+			best = i
+	if best < 0 and current >= 0:
+		return current
+	return best if best >= 0 else _hunt(hxz, lxz)
+
+
+## Which side of the target to stand on: the one with the fewest enemies,
+## inside the leash, not too far to walk. Keeps to the current side unless
+## another is clearly quieter.
+func _quiet_side(h, hxz: Vector2, txz: Vector2, lxz: Vector2) -> Vector2:
+	var stand := _stand_off(h)
+	var now := hxz - txz
+	var current := now / now.length() if now.length() > 0.05 else Vector2.UP
+	var best := current
+	var best_score := INF
+	for k in 9:
+		var dir: Vector2 = current if k == 8 else Vector2.from_angle(k * TAU / 8.0)
+		var p := txz + dir * stand
+		if p.distance_to(lxz) > LEASH * 0.95 or Game.blocked(p, 0.4) or Game.clamp_arena(p) != p:
+			continue
+		var score: float = float(Game.enemies.query(p, MELEE_CROWD).size()) + 0.15 * p.distance_to(hxz)
+		if k == 8:
+			score -= 0.75
+		if score < best_score:
+			best_score = score
+			best = dir
+	return best
+
+
+## Where to break away to: the thinnest ground within a few metres, leaning
+## toward the leader.
+func _escape_spot(hxz: Vector2, lxz: Vector2) -> Vector2:
+	var best := lxz
+	var best_score := INF
+	for ring in [3.0, 5.0]:
+		for k in 8:
+			var p: Vector2 = hxz + Vector2.from_angle(k * TAU / 8.0) * ring
+			if p.distance_to(lxz) > LEASH * 0.9 or Game.blocked(p, 0.4) or Game.clamp_arena(p) != p:
+				continue
+			var score: float = float(Game.enemies.query(p, 3.0).size()) + 0.3 * p.distance_to(lxz)
+			if score < best_score:
+				best_score = score
+				best = p
+	return best
+
+
+## The living healer a hurt hero should run to (not themselves).
+func _healer_for(h):
+	for a in heroes:
+		if a != h and a.is_healer() and not a.downed:
+			return a
+	return null
 
 
 ## Ranged followers kite. When their shot is ready they close to shooting

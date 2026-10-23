@@ -24,9 +24,9 @@ const COLORS := [
 ]
 const GOBLIN_LIFE := 20.0 # seconds before an uncaught goblin escapes
 const BIG_HIT := 40.0 # hits at least this big show a damage number
-const HIT_DAMAGE := 6.0 # per blow, before the toughness ramp
-const HIT_INTERVAL := 1.0 # each enemy in reach strikes once a second
-const HIT_WINDUP := 0.45 # delay before the first blow after reaching a hero
+const HIT_DAMAGE := 3.0 # per blow, before the toughness ramp
+const HIT_INTERVAL := 0.5 # each enemy in reach strikes twice a second ("half cocked")
+const HIT_WINDUP := 0.25 # delay before the first blow after reaching a hero; stepping out of reach resets it
 const STUN_TINT := Color(0.6, 0.72, 1.0)
 const SLOW_TINT := Color(0.55, 0.45, 0.75)
 
@@ -485,7 +485,7 @@ func _move(delta: float) -> void:
 		if v.length_squared() > 0.01:
 			yaw[i] = atan2(v.x, v.y)
 		flash[i] = maxf(0.0, flash[i] - delta)
-		# Blows: an enemy in reach strikes once a second, after a short wind-up.
+		# Blows: an enemy in reach strikes every half second, after a short wind-up.
 		var reach: float = 0.9 + 0.45 * (SCALE[k] - 1.0)
 		if dist < reach and not stunned and hp[i] > 0.0 and HIT_MULT[k] > 0.0:
 			atk_cd[i] -= delta

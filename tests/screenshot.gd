@@ -12,6 +12,13 @@ func _initialize() -> void:
 	for s in OS.get_environment("SHOTS").split(",", false):
 		_shots.append(float(s))
 	_out = OS.get_environment("OUT")
+	var game = root.get_node("Game")
+	game.skip_camp = true
+	game.saving_enabled = false
+	# PARTY=kheiron,halvar,rhian photographs another trio.
+	var picked := OS.get_environment("PARTY")
+	if picked != "":
+		game.party_override = Array(picked.split(","))
 	change_scene_to_file("res://scenes/main.tscn")
 
 
@@ -36,7 +43,7 @@ func _process(_delta: float) -> bool:
 			main.choose_upgrade(0)
 	if _taken < _shots.size() and t >= _shots[_taken]:
 		var img := root.get_texture().get_image()
-		var path := "%s/shot_%03ds.png" % [_out, int(t)]
+		var path := "%s/shot_%05.1fs.png" % [_out, t]
 		img.save_png(path)
 		print("saved ", path)
 		_taken += 1
