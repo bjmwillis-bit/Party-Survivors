@@ -157,7 +157,7 @@ var _anim: AnimationPlayer
 var _anim_state := ""
 var _meshes: Array[MeshInstance3D] = []
 var _skel: Skeleton3D
-var _xray: ShaderMaterial # their colour, shown where something hides them
+var _xray: StandardMaterial3D # their colour, drawn on top when an enemy hides them
 ## For the cursor widget: when this hero last swung, and last got hit.
 var attacked_at_ms := -100000
 var hit_at_ms := -100000
@@ -195,6 +195,7 @@ func _process(delta: float) -> void:
 	for slot in cooldown:
 		cooldown[slot] = maxf(0.0, cooldown[slot] - delta)
 	if _model != null:
+		_occluded = _check_occluded()
 		_set_tint(2 if _flash > 0.0 else (1 if downed else 0))
 		_update_anim()
 		# The animation plays first, then the legs fold over the log if seated.
@@ -1004,12 +1005,9 @@ func _build_model() -> bool:
 	if _model == null:
 		return false
 	_body.add_child(_model)
-	_xray = ShaderMaterial.new()
-	_xray.shader = _xray_shader()
-	_xray.set_shader_parameter("tint", Color(accent.r, accent.g, accent.b, 0.55))
+	_xray = _xray_material()
 	for mi in _model.find_children("*", "MeshInstance3D", true, false):
 		_meshes.append(mi)
-		mi.material_overlay = _xray
 	_anim = _model.get_node("Anim")
 	_anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	_skel = _model.find_child("Skeleton3D", true, false)
@@ -1083,16 +1081,18 @@ func _update_anim() -> void:
 ## Hit flash and the dimmed look when down, drawn as an overlay on the
 ## model's own textures. 0 normal, 1 down, 2 flash.
 func _set_tint(state: int) -> void:
-	if state == _tint:
+	var key := state * 2 + (1 if _occluded else 0)
+	if key == _tint:
 		return
-	_tint = state
-	var overlay: Material = _xray
+	_tint = key
+	var overlay: Material = _xray if _occluded else null
 	if state > 0:
 		var o := StandardMaterial3D.new()
 		o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		o.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		o.albedo_color = Color(1.0, 1.0, 1.0, 0.75) if state == 2 else Color(0.05, 0.05, 0.1, 0.5)
-		o.next_pass = _xray
+		if _occluded:
+			o.next_pass = _xray
 		overlay = o
 	for mi in _meshes:
 		mi.material_overlay = overlay
@@ -1208,19 +1208,28 @@ uniform float fill = 1.0;
 uniform vec4 hp_color : source_color = vec4(0.35, 0.9, 0.4, 1.0);
 uniform float leader = 0.0;
 uniform float flash = 0.0;
+const float SPAN = 0.6; // the arc covers 60% of the circle, open behind the hero
+const float INNER = 0.33;
+const float OUTER = 0.42;
+const float LINE = 0.022; // the black outline
 void fragment() {
 	vec2 p = UV - 0.5;
 	float r = length(p);
 	float aa = max(fwidth(r), 0.002);
-	float t = fract(atan(p.x, -p.y) / 6.2831853);
-	float band = smoothstep(0.33 - aa, 0.33, r) * (1.0 - smoothstep(0.42, 0.42 + aa, r));
-	float filled = step(t, fill);
-	vec3 col = mix(vec3(0.05), hp_color.rgb, filled);
-	float alpha = band * mix(0.35, 0.95, filled);
-	float rim = leader * smoothstep(0.435 - aa, 0.435, r) * (1.0 - smoothstep(0.48, 0.48 + aa, r));
-	col = mix(col, vec3(1.0, 0.8, 0.3), rim);
-	alpha = max(alpha, rim * 0.95);
-	col = mix(col, vec3(1.0, 0.12, 0.06), flash * max(band, rim));
+	// Angle measured from the front (toward the camera), 0..1 around.
+	float a = fract(atan(p.x, p.y) / 6.2831853 + 0.5);
+	// Position along the arc: 0 at its left end, 1 at its right end.
+	float along = (a - (0.5 - SPAN * 0.5)) / SPAN;
+	float on_arc = step(0.0, along) * step(along, 1.0);
+	float band = smoothstep(INNER - aa, INNER, r) * (1.0 - smoothstep(OUTER, OUTER + aa, r));
+	float outline = smoothstep(INNER - LINE - aa, INNER - LINE, r) * (1.0 - smoothstep(OUTER + LINE, OUTER + LINE + aa, r));
+	float ends = step(-LINE * 1.6, along) * step(along, 1.0 + LINE * 1.6);
+	float filled = step(along, fill);
+	vec3 rim = mix(vec3(0.0), vec3(1.0, 0.8, 0.3), leader);
+	vec3 col = mix(vec3(0.08), hp_color.rgb, filled);
+	col = mix(rim, col, band * on_arc);
+	col = mix(col, vec3(1.0, 0.12, 0.06), flash * band * on_arc);
+	float alpha = max(outline * ends * 0.9, band * on_arc * mix(0.55, 0.95, filled));
 	ALBEDO = col;
 	ALPHA = alpha;
 }
@@ -1238,7 +1247,7 @@ func _build_hp_ring() -> void:
 	_hp_mat.shader = _hp_shader
 	_hp_mat.render_priority = 10 # drawn over the horde, so it never gets lost
 	var quad := PlaneMesh.new()
-	var size := 2.3 if kind == "cenhelm" else 2.0
+	var size := (2.3 if kind == "cenhelm" else 2.0) * 0.6 # 40% smaller than before
 	quad.size = Vector2(size, size)
 	_hp_ring = MeshInstance3D.new()
 	_hp_ring.mesh = quad
@@ -1270,36 +1279,43 @@ func _update_hp_ring(delta: float) -> void:
 
 
 # --- Seen through the crowd --------------------------------------------------
-# Where an enemy (or a wall) hides part of a hero, that part shows as a
-# see-through silhouette in the hero's colour. It compares depths, so a
-# hero's own arm in front of their body doesn't count.
+# When an enemy stands between the camera and a hero, the hero is drawn on
+# top as a see-through silhouette in their colour, so they never get lost in
+# the horde. The check is done here (not on the graphics card), so it works
+# the same on every renderer.
 
-const XRAY_SHADER := """
-shader_type spatial;
-render_mode unshaded, depth_test_disabled, depth_draw_never, cull_back, shadows_disabled;
-uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
-uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 0.5);
-void fragment() {
-	float depth = texture(depth_tex, SCREEN_UV).r;
-#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
-	vec3 ndc = vec3(SCREEN_UV, depth) * 2.0 - 1.0;
-#else
-	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth);
-#endif
-	vec4 view = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
-	float scene_z = -view.z / view.w;
-	float my_z = -VERTEX.z;
-	float hidden = step(0.5, my_z - scene_z);
-	ALBEDO = tint.rgb;
-	ALPHA = tint.a * hidden;
-}
-"""
-
-static var _xray_shader_res: Shader
+var _occluded := false
 
 
-static func _xray_shader() -> Shader:
-	if _xray_shader_res == null:
-		_xray_shader_res = Shader.new()
-		_xray_shader_res.code = XRAY_SHADER
-	return _xray_shader_res
+func _xray_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.no_depth_test = true
+	m.render_priority = 5
+	m.albedo_color = Color(accent.r, accent.g, accent.b, 0.55).lerp(Color(1, 1, 1, 0.55), 0.15)
+	return m
+
+
+## Is an enemy between the camera and this hero's body?
+func _check_occluded() -> bool:
+	if downed or not Game.main.is_night():
+		return false
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return false
+	var eye := cam.global_position
+	var chest := global_position + Vector3(0.0, 0.9, 0.0)
+	var ray := chest - eye
+	var length := ray.length()
+	ray /= length
+	var E = Game.enemies
+	for i in E.query(Vector2(chest.x, chest.z), 3.5):
+		var s: float = E.SCALE[E.kind[i]]
+		var c := Vector3(E.pos[i].x, 0.65 * s, E.pos[i].y)
+		var t := (c - eye).dot(ray)
+		if t <= 0.0 or t >= length - 0.3:
+			continue # behind the hero, or level with them
+		if (eye + ray * t).distance_to(c) < 0.5 * s:
+			return true
+	return false

@@ -36,14 +36,11 @@ Gold earned is banked, and nights survived are counted, in `user://save.json` (w
 
 Fallen heroes get back up if the leader stands next to them for 3 seconds.
 
-**Health rings:** each hero has a ring on the ground that empties clockwise as they're hurt (green, then amber, then red). The leader's ring has a gold rim and flashes red when they're low. The rings draw over the horde, and a hero hidden in a crowd shows through as a see-through outline in their colour.
+**Health rings:** each hero has a small arc on the ground in front of them, outlined in black, that empties as they're hurt (green, then amber, then red). It's open behind them so it never crosses their body. The leader's has a gold outline and flashes red when they're low. The rings draw over the horde, and when an enemy stands between the camera and a hero, the hero shows through as a see-through silhouette in their colour.
 
-**The cursor** carries what you need, since that's where your eyes are:
-- A ring that fills as the leader's next basic attack charges, and pulses when it fires.
-- Three health arcs, one per hero, always in the same place (health colours; a thin edge in the hero's colour says who it is, gold for the leader). An arc flashes white when that hero is hit.
-- "Kheiron is down!" under the cursor, with an arrow pointing to them.
+**The cursor** shows a ring that fills as the leader's next basic attack charges, and pulses when it fires. If a hero falls, "Kheiron is down!" appears under the cursor with an arrow pointing to them.
 
-The screen's edge glows red when anyone drops below 30%, pulsing harder the lower they are. The bottom-left panel is a small reference now.
+The screen's edge glows red when anyone drops below 30%, pulsing harder the lower they are.
 
 **Hold to attack (setting):** off by default. When on, the leader swings only while you hold the left mouse button (X on a gamepad); a press just before the swing is ready still counts. Followers always fight on their own.
 

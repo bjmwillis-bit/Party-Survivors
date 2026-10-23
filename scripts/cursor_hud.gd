@@ -1,14 +1,9 @@
 extends Control
-## The cursor: where the player's eyes are, so it carries what they need.
+## The cursor: where the player's eyes are.
 ##
 ##   - A dot where you aim.
 ##   - The attack ring: fills as the leader's next basic attack charges, and
 ##     pulses when it fires, so the rhythm is visible.
-##   - Health arcs: one per hero, always in the same place, emptying as
-##     they're hurt. The fill uses the same health colours as the rings on the
-##     ground (green, amber, red); a thin edge in the hero's own colour says
-##     who it is (gold for the leader). An arc flashes white when that hero is
-##     hit, and pulses red when they're low.
 ##   - "Kheiron is down!" under the cursor, with an arrow pointing to them.
 ##
 ## It sits at the aim point, so it follows the mouse, or the right stick on a
@@ -16,9 +11,8 @@ extends Control
 
 const LOW := 0.3
 const GOLD := Color(1.0, 0.85, 0.3)
-const ARC_RADIUS := 38.0
+const ARC_RADIUS := 20.0 # where the downed notice and its arrow sit
 const RING_RADIUS := 18.0
-const SEGMENT := deg_to_rad(104.0) # each hero's arc; the rest is gaps
 
 var _font: Font
 var _was_hidden := false
@@ -77,35 +71,11 @@ func _draw() -> void:
 		if charge > 0.0:
 			draw_arc(at, r, -PI * 0.5, -PI * 0.5 + TAU * charge, 40, ring_col, 2.5, true)
 
-	# The health arcs, one per hero, always in the same place.
-	var heroes: Array = Game.party.heroes
+	# Who's down (health itself lives on the rings under the heroes).
 	var downed_list: Array = []
-	for i in heroes.size():
-		var h = heroes[i]
-		var mid := -PI * 0.5 + i * TAU / heroes.size()
-		var a0 := mid - SEGMENT * 0.5
-		var lead: bool = h.is_leader
-		var width := 9.0 if lead else 6.5
-		var r := ARC_RADIUS + (1.0 if lead else 0.0)
-		# The track.
-		draw_arc(at, r, a0, a0 + SEGMENT, 24, Color(0, 0, 0, 0.5), width + 3.0, true)
+	for h in Game.party.heroes:
 		if h.downed:
-			draw_arc(at, r, a0, a0 + SEGMENT, 24, Color(0.35, 0.05, 0.05, 0.9), width, true)
 			downed_list.append(h)
-			continue
-		var frac := clampf(h.hp / h.max_hp, 0.0, 1.0)
-		var col := Color(0.35, 0.9, 0.4)
-		if frac < 0.6:
-			col = Color(1.0, 0.72, 0.2).lerp(Color(0.35, 0.9, 0.4), (frac - LOW) / (0.6 - LOW))
-		if frac < LOW:
-			var beat := 0.5 + 0.5 * sin(now * 0.012)
-			col = Color(0.95, 0.15, 0.1).lerp(Color(1.0, 0.55, 0.45), beat)
-		if now - h.hit_at_ms < 140:
-			col = Color.WHITE
-		if frac > 0.0:
-			draw_arc(at, r, a0, a0 + SEGMENT * frac, 24, col, width, true)
-		var edge: Color = GOLD if lead else (h.accent as Color).lerp(Color.WHITE, 0.2)
-		draw_arc(at, r + width * 0.5 + 2.5, a0, a0 + SEGMENT, 24, edge, 2.5 if lead else 2.0, true)
 
 	# Someone is down: say who, and point the way.
 	var line := 0
