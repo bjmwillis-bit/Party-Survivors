@@ -34,6 +34,7 @@ func _process(_delta: float) -> bool:
 	if game.party == null:
 		return false
 	game.hitstop_enabled = false
+	game.saving_enabled = false
 	var t: float = game.time_alive
 	main.autopilot = true
 	# Walk for 2.5 seconds, then stand and fight for 1.5, like a player would.

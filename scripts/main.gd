@@ -260,7 +260,16 @@ func _end_run(victory: bool) -> void:
 		return
 	ended = true
 	get_tree().paused = true
-	Game.hud.show_end(victory, Game.time_alive, locked_kills if locked_kills >= 0 else Game.kills, level, Game.gold)
+	var score: int = locked_kills if locked_kills >= 0 else Game.kills
+	Game.bank_run(Game.gold, victory, score)
+	Game.hud.show_end(victory, Game.time_alive, score, level, Game.gold)
+
+
+## Back to the campfire between runs.
+func to_campfire() -> void:
+	get_tree().paused = false
+	Engine.time_scale = Game.base_time_scale
+	get_tree().change_scene_to_file("res://scenes/campfire.tscn")
 
 
 func restart() -> void:

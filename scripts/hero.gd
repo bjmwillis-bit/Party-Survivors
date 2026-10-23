@@ -933,21 +933,22 @@ static func _animations() -> AnimationLibrary:
 	return _anim_lib
 
 
-func _build_model() -> bool:
-	var m: Dictionary = MODELS.get(kind, {})
+## A hero's placeholder model, dressed and with every Rig_Medium animation
+## in an AnimationPlayer named "Anim". Null if the files are missing.
+## Also used by the campfire screen.
+static func create_model(hero_kind: String) -> Node3D:
+	var m: Dictionary = MODELS.get(hero_kind, {})
 	if m.is_empty():
-		return false
+		return null
 	var model := Game.model(KAYKIT + str(m["file"]))
 	if model == null:
-		return false
-	_model = model
-	_model.scale = Vector3.ONE * float(m["scale"])
-	_body.add_child(_model)
+		return null
+	model.scale = Vector3.ONE * float(m["scale"])
 	for n in m["hide"]:
-		var part := _model.find_child(n, true, false) as Node3D
+		var part := model.find_child(n, true, false) as Node3D
 		if part != null:
 			part.visible = false
-	var skel := _model.find_child("Skeleton3D", true, false) as Skeleton3D
+	var skel := model.find_child("Skeleton3D", true, false) as Skeleton3D
 	if skel != null and str(m["right"]) != "":
 		var weapon := Game.model(KAYKIT + str(m["right"]))
 		if weapon != null:
@@ -955,11 +956,21 @@ func _build_model() -> bool:
 			hand.bone_name = "handslot.r"
 			skel.add_child(hand)
 			hand.add_child(weapon)
+	var anim := AnimationPlayer.new()
+	anim.name = "Anim"
+	model.add_child(anim)
+	anim.add_animation_library("", _animations())
+	return model
+
+
+func _build_model() -> bool:
+	_model = create_model(kind)
+	if _model == null:
+		return false
+	_body.add_child(_model)
 	for mi in _model.find_children("*", "MeshInstance3D", true, false):
 		_meshes.append(mi)
-	_anim = AnimationPlayer.new()
-	_model.add_child(_anim)
-	_anim.add_animation_library("", _animations())
+	_anim = _model.get_node("Anim")
 	_update_anim()
 	return true
 

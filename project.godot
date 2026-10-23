@@ -7,7 +7,7 @@ config_version=5
 
 config/name="Party Survivors"
 config/description="Prototype: lead a party of three through a horde."
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/campfire.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 
 [autoload]

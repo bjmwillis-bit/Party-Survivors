@@ -25,6 +25,7 @@ func _process(_delta: float) -> bool:
 	if game.party == null:
 		return false
 	game.hitstop_enabled = false
+	game.saving_enabled = false
 	if not _applied:
 		_applied = true
 		for card in main.upgrades.pool:

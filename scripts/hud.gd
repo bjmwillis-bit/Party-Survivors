@@ -214,7 +214,7 @@ func _process(_delta: float) -> void:
 		if Input.is_action_just_pressed("banish"):
 			_toggle_banish()
 	elif _end.visible and Input.is_action_just_pressed("restart"):
-		main.restart()
+		main.to_campfire()
 
 
 # --- Bosses, banners and the tally --------------------------------------------
@@ -442,8 +442,8 @@ func _toggle_banish() -> void:
 func show_end(victory: bool, time_alive: float, kills: int, level: int, gold: int) -> void:
 	_end_title.text = "The beast is dead!" if victory else "The party fell"
 	var hunters: int = Game.main.minis_killed
-	_end_stats.text = "Survived %02d:%02d     Kills %d     Level %d     Hunters slain %d/4\n\nGold earned  %d\nNext unlock: a new hero  (coming soon)" % [
-		int(time_alive) / 60, int(time_alive) % 60, kills, level, hunters, gold]
+	_end_stats.text = "Survived %02d:%02d     Kills %d     Level %d     Hunters slain %d/4\n\nGold earned  %d     (banked: %d)\nNext unlock: a new hero  (coming soon)" % [
+		int(time_alive) / 60, int(time_alive) % 60, kills, level, hunters, gold, Game.progress["gold"]]
 	_levelup.visible = false
 	_end.visible = true
 
@@ -460,11 +460,11 @@ func _build_end(root: Control) -> void:
 	_end_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_end_stats)
 	var again := Button.new()
-	again.text = "Run again  [Enter]"
+	again.text = "Back to the fire  [Enter]"
 	again.custom_minimum_size = Vector2(320, 64)
 	again.add_theme_font_size_override("font_size", 26)
 	again.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	again.pressed.connect(func() -> void: Game.main.restart())
+	again.pressed.connect(func() -> void: Game.main.to_campfire())
 	box.add_child(again)
 
 
