@@ -8,6 +8,7 @@ const HeroScript := preload("res://scripts/hero.gd")
 const UiKit := preload("res://scripts/ui_kit.gd")
 
 signal fight
+signal party_changed # a different trio was picked on the HEROES screen
 
 const HeroData := preload("res://scripts/hero_data.gd")
 
@@ -62,7 +63,7 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 26)
 	_root.add_child(row)
 	_buttons["fight"] = _add_button(row, UiKit.button("FIGHT", true), func() -> void: fight.emit())
-	_buttons["heroes"] = _add_button(row, UiKit.button("HEROES"), func() -> void: _open_sheet("solenne"))
+	_buttons["heroes"] = _add_button(row, UiKit.button("HEROES"), func() -> void: _open_sheet(Game.party_kinds()[0]))
 	_buttons["talents"] = _add_button(row, UiKit.button("TALENTS"), Callable())
 	_talents_hint = _buttons["talents"].get_parent().get_child(1)
 	_buttons["settings"] = _add_button(row, UiKit.button("SETTINGS"), _open_settings)
@@ -205,12 +206,15 @@ func _build_sheet() -> void:
 	var m: Array = UiKit.modal(_root)
 	_sheet = m[0]
 	var outer: VBoxContainer = m[1]
+	var head := UiKit.label("Heroes   ·   pick three for the night", 30, UiKit.GOLD)
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	outer.add_child(head)
 	var tabs := HBoxContainer.new()
 	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
-	tabs.add_theme_constant_override("separation", 14)
+	tabs.add_theme_constant_override("separation", 10)
 	outer.add_child(tabs)
 	for kind in HeroData.ORDER:
-		var b := UiKit.button(HeroData.HEROES[kind]["name"], false, Vector2(150, 50))
+		var b := UiKit.button(HeroData.HEROES[kind]["name"], false, Vector2(132, 50))
 		b.add_theme_font_size_override("font_size", 22)
 		b.add_theme_color_override("font_color", (HeroData.HEROES[kind]["accent"] as Color).lerp(Color.WHITE, 0.35))
 		var k: String = kind
@@ -258,6 +262,40 @@ func _show_sheet(kind: String) -> void:
 		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_sheet_box.add_child(body)
 	_sheet_box.add_child(UiKit.label("Talents: coming soon", 20, UiKit.DIM))
+	# In the party, or swap them in for someone.
+	_sheet_box.add_child(HSeparator.new())
+	var party: Array = Game.party_kinds()
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	_sheet_box.add_child(row)
+	if party.has(kind):
+		row.add_child(UiKit.label("In the party.", 24, UiKit.GOLD))
+	else:
+		row.add_child(UiKit.label("Take into the night instead of:", 22))
+		for k in party:
+			var b := UiKit.button(HeroData.HEROES[k]["name"], false, Vector2(150, 48))
+			b.add_theme_font_size_override("font_size", 22)
+			var out: String = k
+			b.pressed.connect(func() -> void: _swap_into_party(kind, out))
+			row.add_child(b)
+	_refresh_tabs()
+
+
+func _swap_into_party(kind: String, out: String) -> void:
+	var party: Array = Game.party_kinds()
+	party[party.find(out)] = kind
+	Game.progress["party"] = party
+	Game.save_game()
+	party_changed.emit()
+	_show_sheet(kind)
+
+
+## Party members' tabs are marked with a dot.
+func _refresh_tabs() -> void:
+	var party: Array = Game.party_kinds()
+	for k in _sheet_tabs:
+		var name_s: String = HeroData.HEROES[k]["name"]
+		_sheet_tabs[k].text = ("● " + name_s) if party.has(k) else name_s
 
 
 ## A label grows and settles, to show its number just changed.

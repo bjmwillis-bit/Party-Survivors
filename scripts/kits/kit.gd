@@ -207,3 +207,35 @@ func shake(amount: float, stop := 0.0) -> void:
 		Game.add_shake(amount)
 		if stop > 0.0:
 			Game.hitstop(stop)
+
+
+## A loose prop in the world (a thrown axe, a dagger on the ground). It lives
+## under the effects node, so it's cleared with everything else each night.
+func make_prop(model_path: String, scale := 1.0, fallback_color := Color.GRAY) -> Node3D:
+	var n := Game.model("res://assets/kaykit/" + model_path)
+	if n == null:
+		var mi := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(0.15, 0.5, 0.08)
+		mi.mesh = box
+		mi.material_override = Game.material(fallback_color)
+		n = mi
+	n.scale = Vector3.ONE * scale
+	Game.fx.add_child(n)
+	return n
+
+
+## A soft-edged disc on the ground (clouds, markers). Returns [node, material].
+func make_disc(radius: float, color: Color) -> Array:
+	var mi := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = radius
+	cyl.bottom_radius = radius
+	cyl.height = 0.04
+	cyl.radial_segments = 32
+	mi.mesh = cyl
+	var mat := Game.effect_material(color)
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	Game.fx.add_child(mi)
+	return [mi, mat]

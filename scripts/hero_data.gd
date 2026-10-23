@@ -79,7 +79,7 @@ const HEROES := {
 		"engage": 4.0,
 		"sect": "Viking", "line": "Twin hooks, already in the chest. Hunger on his face.",
 		"role": "Bleeder. Throws two axes that land and fly back, cutting both ways. Every hit bleeds (15% of his attack a second for 4 s).",
-		"model": {"file": "characters/Barbarian.glb", "scale": 0.9, "hide": ["Barbarian_Hat"], "right": "weapons/axe_1handed.gltf", "left": "weapons/axe_1handed.gltf", "tint": Color(0.85, 0.9, 1.0)},
+		"model": {"file": "characters/Barbarian.glb", "scale": 0.9, "hide": ["Barbarian_BearHat"], "right": "weapons/axe_1handed.gltf", "left": "weapons/axe_1handed.gltf", "tint": Color(0.85, 0.9, 1.0)},
 		"ult_cards": [
 			["hal_u_spin", "Red Harvest", "During Hall of Axes he spins (×0.8, bleeding) every 2 s."],
 			["hal_u_more", "More Axes", "During Hall of Axes he throws 2 more axes."],

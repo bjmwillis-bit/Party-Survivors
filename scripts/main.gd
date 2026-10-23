@@ -86,6 +86,7 @@ func _ready() -> void:
 	camp_ui = CampUiScript.new()
 	add_child(camp_ui)
 	camp_ui.fight.connect(set_out)
+	camp_ui.party_changed.connect(_on_party_changed)
 	Game.results.chosen.connect(_on_results_chosen)
 	Game.results.blacked_out.connect(_on_blacked_out)
 	if Game.skip_camp:
@@ -299,6 +300,14 @@ func _on_results_chosen(keep_fighting: bool) -> void:
 		set_out()
 	else:
 		camp_ui.show_ui(true)
+
+
+## A different trio was picked at the fire: rebuild the party in their seats.
+func _on_party_changed() -> void:
+	if state != CAMP:
+		return
+	_fresh_night()
+	_seat_party(true)
 
 
 ## A fall: behind the black, a fresh night and the party back at the fire.

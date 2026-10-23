@@ -70,6 +70,32 @@ Each hero has a basic attack that fires on its own, a **skill (Q)** and an **ult
 - Q *The Grove* (14 s): a leash-sized grove for 4 s; allies inside heal 1.5% a second.
 - E *Give the Sky* (60 s): pays 20% of his health to reset the other heroes' ultimates.
 
+**Halvar**: throws two axes at the nearest enemy, 0.3 s apart. They land, then fly back to his hands, hitting again on the way. Every hit bleeds (15% of his attack a second for 4 s).
+- Q *Reaving Rush* (10 s): dashes forward through a line, then spins (×0.8 each, bleeding).
+- E *Hall of Axes* (35 s): +50% attack speed for 8 s, and the axes come back faster.
+
+**Niten**: slow, heavy cuts: a 135° swing (45° left to 90° right), then a stab.
+- Q *Twin Wind* (9 s): two slices 0.6 s apart, each sending a 90° wave 8 m forward (×1.5); he hops back 1 m with each.
+- E *Heaven Strike* (40 s): after 0.5 s, lightning strikes the toughest enemy in sight (bosses first), ×3 within 4 m.
+
+**Bram**: hammers nails at the nearest enemy; they pierce 2 and fly 6 m.
+- Q *Anvil* (16 s): an anvil between the party; for 8 s, heroes within 6 m attack 15% faster and deal 15% more damage.
+- E *Temper* (45 s): a 4.5 s channel that carries on if he's swapped out: four strikes in rings of 2, 4, 6 and 8 m (×1.5 each), slowing what they catch by 40%.
+
+**Rhian**: a piercing 4 m stab. Each stab that lands makes the next 20% faster, up to 5 times, while she keeps hitting.
+- Q *Hold the Line* (9 s): a spin that knocks everything within 7 m out to 7 m (×0.8).
+- E *The Line* (40 s): a battle cry, then three lightning stabs from furthest enemy to furthest enemy in the leash, ×2.5 to everything she passes.
+
+**Levana**: throws daggers (5 m, pierce 2) that stay where they land, up to 10.
+- Q *Vanish* (12 s): her 10 newest daggers fly back to her, cutting on the way; she's invisible with +30% speed for 3 s, and can't attack meanwhile.
+- E *Smoke and Poison* (35 s): two smoke bombs at the furthest enemies in the leash: 5 m clouds for 6 s, slowing 20% and dealing 30% of her attack a second.
+
+**Cael**: a fast double sweep that reaches 6 m but only hits the far 3 m.
+- Q *Claim* (10 s): throws his spear at the thickest crowd within 8 m (×0.8 in 2 m), then leaps to it, untouchable (×1.5 in 4 m).
+- E *Skyfall* (40 s): leaps into the air, untouchable; a blue target drifts toward the cursor at 1 m/s. After 4 s (or press E again) he lands: ×3 within 2 m, ×1.5 out to 6 m.
+
+**Picking the party:** at the campfire, open **HEROES**, choose a hero, and swap them in for someone. The pick is saved. For now all nine are open; later, heroes join through rescue nights. Placeholder models are KayKit characters, tinted where two heroes share a body.
+
 The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst.
 
 ## A run

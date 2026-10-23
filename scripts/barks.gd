@@ -12,11 +12,23 @@ const LINES := {
 		"solenne": ["We're trapped.", "There's no way out."],
 		"cenhelm": ["We're trapped.", "There's no way out."],
 		"kheiron": ["We're trapped.", "There's no way out."],
+		"halvar": ["We're trapped.", "There's no way out."],
+		"niten": ["We're trapped.", "There's no way out."],
+		"bram": ["We're trapped.", "There's no way out."],
+		"rhian": ["We're trapped.", "There's no way out."],
+		"levana": ["We're trapped.", "There's no way out."],
+		"cael": ["We're trapped.", "There's no way out."],
 	},
 	# The Beast falls: one of the others says this, then Solenne answers.
 	"rest": {
 		"cenhelm": ["Finally, some rest."],
 		"kheiron": ["Finally, some rest."],
+		"halvar": ["Finally, some rest."],
+		"niten": ["Finally, some rest."],
+		"bram": ["Finally, some rest."],
+		"rhian": ["Finally, some rest."],
+		"levana": ["Finally, some rest."],
+		"cael": ["Finally, some rest."],
 	},
 	"rest_reply": {
 		"solenne": ["...for now."],
