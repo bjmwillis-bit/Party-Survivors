@@ -68,6 +68,22 @@ The leader deals 20% more damage. Swapping has a 1-second cooldown and a small e
 - **Damage numbers** show for big hits and for hits on elites and bosses (a settings toggle comes with the menu).
 - Gold is counted per run for now. The end screen shows a placeholder "next unlock".
 
+## The arena and the night
+
+- The arena is a circle walled by **runestones**: rough standing stones with faint purple runes on their inner faces, some joined by lintels. There's no way out.
+- Every run starts at **sundown**. Over the first two and a half minutes the light sinks into a steady, reddish, fire-lit night. It's never pitch black: the runes glow brighter as the sun goes, braziers burn in the ruins, and a warm glow follows the party.
+- When the Beast arrives at 12:00, a **faint sunrise** begins.
+- Colours and timings live at the top of `scripts/arena.gd` (`SKY`, `NIGHTFALL`).
+
+## Captions
+
+Spoken lines show as captions at the bottom of the screen until the voices are recorded:
+- The leader walks into the runestones: *"We're trapped."* / *"There's no way out."* (once per run per hero).
+- The Beast at half health: *"The Heart is MINE!"*
+- The Beast falls: *"Finally, some rest."* … Solenne: *"...for now."*
+
+Every line lives in `scripts/barks.gd` (`LINES`), with room for several variants per hero. Captions can be switched off with `Game.settings["captions"]` (the settings menu comes later).
+
 ## Level-up cards
 
 Cards are coloured by hero (Solenne red, Cenhelm orange, Kheiron green, party grey) and bordered by rarity, each with its own reveal:
@@ -88,7 +104,7 @@ Cards are coloured by hero (Solenne red, Cenhelm orange, Kheiron green, party gr
 ## Project layout
 
 - `scenes/main.tscn`: the one scene; everything else is built in code for now.
-- `scripts/`: one script per system (party, hero, enemies, XP, effects, HUD, upgrades). Each file starts with a comment explaining what it does.
+- `scripts/`: one script per system (arena, party, hero, enemies, XP, effects, HUD, upgrades, barks). Each file starts with a comment explaining what it does.
 - `tests/smoke_test.gd`: a bot that plays a full run without a window and reports how it went. Run it with:
   `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd`
 - `tests/all_cards_test.gd`: switches on every card at once and plays two minutes, to catch broken card effects.
@@ -101,4 +117,4 @@ Both packs are by Kay Lousberg (www.kaylousberg.com) and are CC0 (licences in `a
 
 ## Next
 
-Runestone ring and a fire-lit night, then ranged kiting and health rings, then the campfire, saves and meta-progression.
+Ranged kiting and health rings, then the campfire, saves and meta-progression.

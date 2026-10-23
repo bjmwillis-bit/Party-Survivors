@@ -658,7 +658,6 @@ func _ultrix() -> bool:
 
 func _tick_ultrix(delta: float) -> void:
 	_ult_t += delta
-	var a: float = Game.main.ARENA_HALF
 	if _ult_phase == 1:
 		# Backstep, then a beat before the lunge.
 		position = _ult_from.lerp(_ult_to, minf(1.0, _ult_t / 0.12))
@@ -667,8 +666,9 @@ func _tick_ultrix(delta: float) -> void:
 			_ult_t = 0.0
 			_ult_from = position
 			var end := position + Vector3(_ult_dir.x, 0.0, _ult_dir.y) * ULTRIX_LUNGE
-			end.x = clampf(end.x, -a, a)
-			end.z = clampf(end.z, -a, a)
+			var e2: Vector2 = Game.clamp_arena(Vector2(end.x, end.z))
+			end.x = e2.x
+			end.z = e2.y
 			_ult_to = end
 			Game.fx.thrust(position, facing, ULTRIX_LUNGE, Color(1.0, 0.15, 0.1))
 			if is_leader:

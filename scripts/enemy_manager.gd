@@ -18,7 +18,7 @@ const STUN_TAKEN := [1.0, 1.0, 1.0, 0.6, 0.3, 0.0, 1.0] # how much of a stun sti
 const HIT_MULT := [1.0, 0.8, 0.35, 2.0, 3.0, 4.0, 0.0] # blow damage (goblins don't fight)
 const XP_DROP := [1, 1, 1, 10, 30, 0, 0]
 const COLORS := [
-	Color(0.36, 0.22, 0.2), Color(0.58, 0.44, 0.24), Color(0.72, 0.64, 0.46),
+	Color(0.36, 0.36, 0.4), Color(0.58, 0.44, 0.24), Color(0.72, 0.64, 0.46),
 	Color(0.55, 0.15, 0.5), Color(0.5, 0.05, 0.05), Color(0.16, 0.02, 0.02),
 	Color(1.0, 0.82, 0.2),
 ]
@@ -335,9 +335,7 @@ func spawn_near_leader(k: int, dist_min := 19.0, dist_max := 24.0) -> int:
 func spawn(k: int, p: Vector2) -> int:
 	if count >= MAX_ENEMIES:
 		return -1
-	var a: float = Game.main.ARENA_HALF
-	p.x = clampf(p.x, -a, a)
-	p.y = clampf(p.y, -a, a)
+	p = Game.clamp_arena(p)
 	var i := count
 	pos[i] = p
 	knock[i] = Vector2.ZERO
@@ -467,9 +465,7 @@ func _move(delta: float) -> void:
 			if tang.dot(v) < 0.0:
 				tang = -tang
 			np = Game.push_out(out + tang * v.length() * delta, body_r)
-		var a: float = Game.main.ARENA_HALF
-		np.x = clampf(np.x, -a, a)
-		np.y = clampf(np.y, -a, a)
+		np = Game.clamp_arena(np)
 		pos[i] = np
 		if v.length_squared() > 0.01:
 			yaw[i] = atan2(v.x, v.y)

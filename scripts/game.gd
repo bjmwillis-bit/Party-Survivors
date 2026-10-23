@@ -12,6 +12,7 @@ var enemies
 var xp
 var fx
 var hud
+var barks
 
 var time_alive := 0.0
 var kills := 0
@@ -20,7 +21,7 @@ var shake := 0.0
 var chests
 
 ## Player settings. A menu will edit these later.
-var settings := {"damage_numbers": true}
+var settings := {"damage_numbers": true, "captions": true}
 
 ## Tests raise this to play faster than real time.
 var base_time_scale := 1.0
@@ -54,6 +55,19 @@ func hitstop(duration: float) -> void:
 
 func add_shake(amount: float) -> void:
 	shake = maxf(shake, amount)
+
+
+# --- The arena ---------------------------------------------------------------
+
+## The runestone ring: everything stays inside this circle.
+const ARENA_RADIUS := 58.0
+
+
+func clamp_arena(p: Vector2, margin := 0.0) -> Vector2:
+	var r := ARENA_RADIUS - margin
+	if p.length_squared() > r * r:
+		return p.normalized() * r
+	return p
 
 
 # --- Models and obstacles ----------------------------------------------------

@@ -22,6 +22,9 @@ var _boss_name: Label
 var _boss_bar: ProgressBar
 var _banner: Label
 var _banner_t := 0.0
+var _caption: RichTextLabel
+var _caption_t := 0.0
+var _caption_queue: Array = []
 
 const KillCounterScript := preload("res://scripts/kill_counter.gd")
 
@@ -77,6 +80,25 @@ func _ready() -> void:
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.modulate.a = 0.0
 	root.add_child(_banner)
+
+	# Captions: who is speaking, and what they say (voice comes later).
+	_caption = RichTextLabel.new()
+	_caption.bbcode_enabled = true
+	_caption.fit_content = true
+	_caption.scroll_active = false
+	_caption.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_caption.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_caption.offset_left = -700
+	_caption.offset_right = 700
+	_caption.offset_top = -190
+	_caption.offset_bottom = -136
+	_caption.add_theme_font_size_override("normal_font_size", 28)
+	_caption.add_theme_font_size_override("bold_font_size", 28)
+	_caption.add_theme_color_override("font_outline_color", Color.BLACK)
+	_caption.add_theme_constant_override("outline_size", 8)
+	_caption.modulate.a = 0.0
+	root.add_child(_caption)
 
 	# Kill counter (top right) and gold (top left).
 	_kills = KillCounterScript.new()
@@ -155,6 +177,7 @@ func _process(_delta: float) -> void:
 	if _banner_t > 0.0:
 		_banner_t -= _delta
 		_banner.modulate.a = clampf(_banner_t / 0.6, 0.0, 1.0)
+	_tick_caption(_delta)
 	_xp_bar.value = float(main.xp_have) / float(main.xp_need)
 
 	for r in _rows:
@@ -214,6 +237,28 @@ func banner(text: String, color := Color.WHITE, seconds := 2.0) -> void:
 	_banner.add_theme_color_override("font_color", color)
 	_banner_t = seconds
 	_banner.modulate.a = 1.0
+
+
+## Shows a spoken line at the bottom of the screen. Lines queue up, so a
+## reply waits for the line before it.
+func caption(speaker: String, text: String, color: Color, seconds := 2.6) -> void:
+	if not Game.settings.get("captions", true):
+		return
+	_caption_queue.append([speaker, text, color, seconds])
+
+
+func _tick_caption(delta: float) -> void:
+	if _caption_t > 0.0:
+		_caption_t -= delta
+		_caption.modulate.a = clampf(_caption_t / 0.35, 0.0, 1.0)
+		return
+	if _caption_queue.is_empty():
+		return
+	var c: Array = _caption_queue.pop_front()
+	var col: Color = c[2]
+	_caption.text = "[center][b][color=#%s]%s:[/color][/b]  %s[/center]" % [col.lerp(Color.WHITE, 0.4).to_html(false), c[0], c[1]]
+	_caption_t = c[3]
+	_caption.modulate.a = 1.0
 
 
 func add_claw() -> void:

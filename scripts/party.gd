@@ -137,9 +137,9 @@ func _move_leader(delta: float) -> void:
 		return
 	# Crisp: full speed instantly, no momentum or sliding.
 	l.position += dir * speed * speed_mult * delta
-	var a: float = Game.main.ARENA_HALF
-	l.position.x = clampf(l.position.x, -a, a)
-	l.position.z = clampf(l.position.z, -a, a)
+	var lp: Vector2 = Game.clamp_arena(Vector2(l.position.x, l.position.z))
+	l.position.x = lp.x
+	l.position.z = lp.y
 	_form_yaw = lerp_angle(_form_yaw, atan2(dir.x, dir.z), 1.0 - exp(-7.0 * delta))
 
 
