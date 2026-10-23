@@ -143,7 +143,12 @@ var _step_timer := 0.0
 var _lunge := 0.0
 var _body: Node3D
 var _mat: StandardMaterial3D
-var _lead_ring: MeshInstance3D
+var _hp_ring: MeshInstance3D # health on the ground: a ring that empties as they're hurt
+var _hp_mat: ShaderMaterial
+var _hp_shown := 1.0
+## Ranged kiting: where this follower is heading between shots.
+var kite_spot := Vector3.ZERO
+var kite_timer := 0.0
 var _revive_ring: MeshInstance3D
 var _taunt_ring: MeshInstance3D
 var _model: Node3D # the KayKit placeholder model, if it loaded
@@ -167,6 +172,7 @@ func setup(hero_kind: String) -> void:
 	_build_visual()
 	_taunt_ring = _flat_ring(0.95, 1.1, Color(accent.r, accent.g, accent.b, 0.7))
 	_taunt_ring.visible = false
+	_build_hp_ring()
 
 
 func _process(delta: float) -> void:
@@ -187,7 +193,7 @@ func _process(delta: float) -> void:
 		_mat.albedo_color = color.darkened(0.55)
 	else:
 		_mat.albedo_color = color
-	_lead_ring.visible = is_leader and not downed
+	_update_hp_ring(delta)
 	_revive_ring.visible = downed
 	_taunt_ring.visible = _taunt_time > 0.0 and not downed
 
@@ -279,6 +285,21 @@ func _my_xz() -> Vector2:
 
 func is_healer() -> bool:
 	return kind == "kheiron"
+
+
+## Ranged heroes kite as followers: shoot when ready, reposition between shots.
+func is_ranged() -> bool:
+	return kind == "kheiron"
+
+
+## How far a ranged hero can shoot.
+func shot_range() -> float:
+	return 13.0
+
+
+## True when the next basic attack is (nearly) ready to fire.
+func attack_ready() -> bool:
+	return _attack_timer <= 0.12
 
 
 ## How close a follower gets to its target before stopping to fight.
@@ -386,7 +407,7 @@ func _attack_cenhelm() -> bool:
 
 func _attack_kheiron() -> bool:
 	var me := _my_xz()
-	var target: int = Game.enemies.nearest(me, 13.0)
+	var target: int = Game.enemies.nearest(me, shot_range())
 	if target < 0:
 		return false
 	var to: Vector2 = (Game.enemies.pos[target] - me).normalized()
@@ -983,7 +1004,6 @@ func _build_visual() -> void:
 	add_child(_body)
 	_mat = Game.material(color)
 	if _build_model():
-		_lead_ring = _flat_ring(0.62, 0.78, Color(1.0, 0.82, 0.3, 0.9))
 		_revive_ring = _flat_ring(0.85, 1.0, Color(0.5, 1.0, 0.5, 0.8))
 		_revive_ring.visible = false
 		return
@@ -1048,7 +1068,6 @@ func _build_visual() -> void:
 			tip.rings = 2
 			_part(Game.flat_mesh(tip), Game.material(accent, 1.5), Vector3(0.42, 2.05, 0.15))
 
-	_lead_ring = _flat_ring(0.62, 0.78, Color(1.0, 0.82, 0.3, 0.9))
 	_revive_ring = _flat_ring(0.85, 1.0, Color(0.5, 1.0, 0.5, 0.8))
 	_revive_ring.visible = false
 
@@ -1076,3 +1095,75 @@ func _flat_ring(inner: float, outer: float, ring_color: Color) -> MeshInstance3D
 	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(m)
 	return m
+
+
+# --- Health ring -------------------------------------------------------------
+# A ring on the ground under each hero that empties clockwise as they lose
+# health: green, then amber, then red. The leader's has a gold rim, and
+# flashes red when they're low.
+
+const HP_RING_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled;
+uniform float fill = 1.0;
+uniform vec4 hp_color : source_color = vec4(0.35, 0.9, 0.4, 1.0);
+uniform float leader = 0.0;
+uniform float flash = 0.0;
+void fragment() {
+	vec2 p = UV - 0.5;
+	float r = length(p);
+	float aa = max(fwidth(r), 0.002);
+	float t = fract(atan(p.x, -p.y) / 6.2831853);
+	float band = smoothstep(0.33 - aa, 0.33, r) * (1.0 - smoothstep(0.42, 0.42 + aa, r));
+	float filled = step(t, fill);
+	vec3 col = mix(vec3(0.05), hp_color.rgb, filled);
+	float alpha = band * mix(0.35, 0.95, filled);
+	float rim = leader * smoothstep(0.435 - aa, 0.435, r) * (1.0 - smoothstep(0.48, 0.48 + aa, r));
+	col = mix(col, vec3(1.0, 0.8, 0.3), rim);
+	alpha = max(alpha, rim * 0.95);
+	col = mix(col, vec3(1.0, 0.12, 0.06), flash * max(band, rim));
+	ALBEDO = col;
+	ALPHA = alpha;
+}
+"""
+const HP_LOW := 0.3 # below this the ring turns red (and the leader's flashes)
+
+static var _hp_shader: Shader
+
+
+func _build_hp_ring() -> void:
+	if _hp_shader == null:
+		_hp_shader = Shader.new()
+		_hp_shader.code = HP_RING_SHADER
+	_hp_mat = ShaderMaterial.new()
+	_hp_mat.shader = _hp_shader
+	var quad := PlaneMesh.new()
+	var size := 2.3 if kind == "cenhelm" else 2.0
+	quad.size = Vector2(size, size)
+	_hp_ring = MeshInstance3D.new()
+	_hp_ring.mesh = quad
+	_hp_ring.material_override = _hp_mat
+	_hp_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_hp_ring.top_level = true # stays upright: it shouldn't spin as the hero turns
+	add_child(_hp_ring)
+
+
+func _update_hp_ring(delta: float) -> void:
+	_hp_ring.visible = not downed
+	if downed:
+		return
+	_hp_ring.global_position = Vector3(global_position.x, 0.06, global_position.z)
+	var frac := clampf(hp / max_hp, 0.0, 1.0)
+	_hp_shown = move_toward(_hp_shown, frac, delta * 1.5) # drains smoothly, never lags far
+	if absf(_hp_shown - frac) > 0.25:
+		_hp_shown = frac + 0.25 * signf(_hp_shown - frac)
+	var col := Color(0.35, 0.9, 0.4)
+	if frac < 0.6:
+		col = Color(1.0, 0.72, 0.2).lerp(Color(0.35, 0.9, 0.4), (frac - HP_LOW) / (0.6 - HP_LOW)) if frac >= HP_LOW else Color(0.95, 0.2, 0.12)
+	_hp_mat.set_shader_parameter("fill", _hp_shown)
+	_hp_mat.set_shader_parameter("hp_color", col)
+	_hp_mat.set_shader_parameter("leader", 1.0 if is_leader else 0.0)
+	var flash := 0.0
+	if is_leader and frac < HP_LOW:
+		flash = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
+	_hp_mat.set_shader_parameter("flash", flash)

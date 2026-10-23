@@ -14,6 +14,13 @@ const LEASH := 8.0
 const HEAL_SEEK_BELOW := 0.9
 ## Below this health fraction a follower stops hunting and falls back.
 const RETREAT_BELOW := 0.35
+## Ranged kiting (see _kite).
+const KITE_STEP := 2.5 # how far apart the spots it considers are
+const KITE_CROWD_RADIUS := 3.5 # enemies within this of a spot count against it
+const KITE_KEEP_RANGE := 0.75 # stay within this fraction of shooting range
+const KITE_RETHINK := 0.3 # seconds between choosing a new spot
+## A healer stays within this of the ally who needs them.
+const HEALER_STAY_NEAR := 5.0
 
 var heroes: Array = []
 var leader_index := 0
@@ -238,15 +245,26 @@ func _move_followers(delta: float) -> void:
 			elif hxz.distance_to(gxz) > gr * 0.85:
 				goal = _grove_spot_near_leader(l, g)
 				stop = 0.5
+			elif h.is_ranged() and not low and _hunt(hxz, lxz) >= 0:
+				# Ranged heroes keep kiting, but inside the grove.
+				var k = _kite(h, _hunt(hxz, lxz), lxz, null, delta, gxz, gr * 0.8)
+				goal = k[0]
+				stop = k[1]
 			else:
 				goal = h.position
-		elif h.is_healer():
-			var hurt = lowest_health_ally(h, HEAL_SEEK_BELOW)
-			if hurt != null:
-				goal = hurt.position
-				stop = 2.0
 		elif low:
 			pass # fall back to the formation slot behind the leader
+		elif h.is_ranged():
+			var hurt = lowest_health_ally(h, HEAL_SEEK_BELOW) if h.is_healer() else null
+			if hurt != null and h.position.distance_to(hurt.position) > HEALER_STAY_NEAR:
+				goal = hurt.position # a healer keeps close to whoever is hurt
+				stop = HEALER_STAY_NEAR - 1.0
+			else:
+				var e := _hunt(hxz, lxz)
+				if e >= 0:
+					var k = _kite(h, e, lxz, hurt, delta)
+					goal = k[0]
+					stop = k[1]
 		else:
 			var e := _hunt(hxz, lxz)
 			if e >= 0:
@@ -280,6 +298,49 @@ func _move_followers(delta: float) -> void:
 		h.move_dir = to / d
 		if h.face_lock <= 0.0 and h.moving:
 			h.facing = atan2(to.x, to.z)
+
+
+## Ranged followers kite. When their shot is ready they close to shooting
+## range and fire; while it reloads they slip to the nearby spot with the
+## fewest enemies around it, as long as the target stays in range and the
+## spot is inside the leash. Returns [goal, stop distance].
+func _kite(h, target: int, lxz: Vector2, near_ally, delta: float, zone := Vector2.ZERO, zone_r := 0.0) -> Array:
+	var txz: Vector2 = Game.enemies.pos[target]
+	var hxz := Vector2(h.position.x, h.position.z)
+	var keep: float = h.shot_range() * KITE_KEEP_RANGE
+	if h.attack_ready():
+		h.kite_timer = 0.0
+		if hxz.distance_to(txz) > keep and zone_r <= 0.0:
+			return [Vector3(txz.x, 0.0, txz.y), keep * 0.9]
+		return [h.position, 0.06] # in range: stand and fire
+	h.kite_timer -= delta
+	if h.kite_timer <= 0.0:
+		h.kite_timer = KITE_RETHINK
+		h.kite_spot = _quietest_spot(hxz, txz, keep, lxz, near_ally, zone, zone_r)
+	return [h.kite_spot, 0.15]
+
+
+func _quietest_spot(from: Vector2, target: Vector2, keep: float, lxz: Vector2, near_ally, zone: Vector2, zone_r: float) -> Vector3:
+	var best := from
+	var best_score := INF
+	for ring in [0.0, KITE_STEP, KITE_STEP * 2.0]:
+		var dirs := 1 if ring == 0.0 else 8
+		for k in dirs:
+			var p: Vector2 = from + Vector2.from_angle(k * TAU / 8.0) * ring
+			if p.distance_to(lxz) > LEASH * 0.9 or p.distance_to(target) > keep:
+				continue
+			if near_ally != null and p.distance_to(Vector2(near_ally.position.x, near_ally.position.z)) > HEALER_STAY_NEAR:
+				continue
+			if zone_r > 0.0 and p.distance_to(zone) > zone_r:
+				continue
+			if Game.blocked(p, 0.4) or Game.clamp_arena(p) != p:
+				continue
+			# Fewest enemies close by; break ties by not walking far.
+			var score: float = float(Game.enemies.query(p, KITE_CROWD_RADIUS).size()) + ring * 0.05
+			if score < best_score:
+				best_score = score
+				best = p
+	return Vector3(best.x, 0.0, best.y)
 
 
 ## A spot inside the grove that is also inside the leash.

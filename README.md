@@ -25,14 +25,17 @@ This is **milestone 1**: a grey-box prototype to answer one question — is stee
 
 Fallen heroes get back up if the leader stands next to them for 3 seconds.
 
+**Health rings:** each hero has a ring on the ground that empties clockwise as they're hurt (green, then amber, then red). The leader's ring has a gold rim and flashes red when they're low.
+
 ## How the party behaves
 
 - **The leader** is yours: they face your mouse, and their basic attack fires where you aim.
 - **Followers** hunt the nearest enemies, but only inside the leash (the faint circle, 8 metres around the leader). Past it, they run back.
-- **The healer (Kheiron)** goes to whichever ally has the lowest health percentage, and otherwise stays back and fires from range.
+- **Ranged followers (Kheiron) kite.** When their shot is ready they get in range and fire; while it reloads they slip to the nearby spot with the fewest enemies, keeping their target in range and staying inside the leash. Melee followers keep diving in.
+- **The healer (Kheiron)** also stays within 5 m of whoever is hurt the most.
 - **Badly hurt followers** (below 35% health) stop hunting and fall back behind the leader.
 
-Tuning numbers live at the top of `scripts/party.gd` (`LEASH`, `HEAL_SEEK_BELOW`, `RETREAT_BELOW`).
+Tuning numbers live at the top of `scripts/party.gd` (`LEASH`, `HEAL_SEEK_BELOW`, `RETREAT_BELOW`, and the `KITE_` numbers).
 
 ## The heroes (grey-box versions)
 
@@ -117,4 +120,4 @@ Both packs are by Kay Lousberg (www.kaylousberg.com) and are CC0 (licences in `a
 
 ## Next
 
-Ranged kiting and health rings, then the campfire, saves and meta-progression.
+The campfire, saves and the run loop (gold banked, nights counted), then the Keep.
