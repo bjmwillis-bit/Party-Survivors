@@ -71,6 +71,15 @@ func _input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if _wiped:
 		return
+	if not Game.main.is_night():
+		# At the fire, setting out or walking home: main.gd directs the party.
+		_move_directed(delta)
+		_separate_heroes()
+		_reticle.visible = false
+		_leash_ring.visible = false
+		return
+	_reticle.visible = true
+	_leash_ring.visible = true
 	swap_timer = maxf(0.0, swap_timer - delta)
 	if Input.is_action_just_pressed("swap"):
 		swap()
@@ -88,6 +97,55 @@ func _process(delta: float) -> void:
 	_tick_revive(delta)
 	var l = leader()
 	_leash_ring.position = Vector3(l.position.x, 0.04, l.position.z)
+
+
+# --- Directed movement (camp, setting out, walking home) ----------------------
+
+## hero -> {"to": Vector3, "face": float (radians), "speed": float}
+var directed := {}
+
+
+func direct(h, to: Vector3, face: float, run_speed := 5.5) -> void:
+	directed[h] = {"to": to, "face": face, "speed": run_speed}
+
+
+func arrived(h) -> bool:
+	if not directed.has(h):
+		return true
+	var to: Vector3 = directed[h]["to"]
+	return Vector2(h.position.x - to.x, h.position.z - to.z).length() < 0.12
+
+
+func _move_directed(delta: float) -> void:
+	for h in heroes:
+		if not directed.has(h) or h.downed or h.sit > 0.05:
+			h.moving = false # (still getting up off the log)
+			continue
+		var d: Dictionary = directed[h]
+		var to: Vector3 = d["to"] - h.position
+		to.y = 0.0
+		var dist := to.length()
+		if dist < 0.12:
+			h.moving = false
+			h.move_dir = Vector3.ZERO
+			h.facing = d["face"]
+			continue
+		var step := minf(dist, float(d["speed"]) * delta)
+		h.position += to / dist * step
+		# Round the fire and the ruins rather than through them.
+		var hp2 := Vector2(h.position.x, h.position.z)
+		var out: Vector2 = Game.push_out(hp2, 0.4)
+		if out != hp2:
+			var n: Vector2 = (out - hp2).normalized()
+			var tang := Vector2(-n.y, n.x)
+			if tang.dot(Vector2(to.x, to.z)) < 0.0:
+				tang = -tang
+			out = Game.push_out(out + tang * step, 0.4)
+			h.position.x = out.x
+			h.position.z = out.y
+		h.moving = true
+		h.move_dir = to / dist
+		h.facing = atan2(to.x, to.z)
 
 
 # --- Lookups -----------------------------------------------------------------

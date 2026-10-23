@@ -20,8 +20,22 @@ var gold := 0
 var shake := 0.0
 var chests
 
-## Player settings. A menu will edit these later.
+## Player settings, edited on the campfire's Settings panel and saved.
 var settings := {"damage_numbers": true, "captions": true}
+
+## What carries over between runs. Saved to user://save.json.
+const SAVE_PATH := "user://save.json"
+var progress := {"gold": 0, "nights_survived": 0, "runs": 0, "best_kills": 0}
+## Tests switch this off so they never touch the player's save.
+var saving_enabled := true
+
+## The results screen. It lives here, outside any scene, so it can stay up
+## while the battle behind it turns into the campfire.
+var results
+## The night that just ended (what the campfire reacts to).
+var last_run := {}
+## Tests set this to start straight in a night, skipping the campfire.
+var skip_camp := false
 
 ## Tests raise this to play faster than real time.
 var base_time_scale := 1.0
@@ -35,12 +49,56 @@ var _hitstop_end_ms := 0
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
+	load_game()
+	results = preload("res://scripts/results.gd").new()
+	add_child(results)
 
 
 func _process(_delta: float) -> void:
 	if _hitstop_end_ms > 0 and Time.get_ticks_msec() >= _hitstop_end_ms:
 		_hitstop_end_ms = 0
 		Engine.time_scale = base_time_scale
+
+
+# --- Saving ------------------------------------------------------------------
+
+func load_game() -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return
+	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if f == null:
+		return
+	var data = JSON.parse_string(f.get_as_text())
+	if not data is Dictionary:
+		push_warning("Save file unreadable; starting fresh.")
+		return
+	# Merge, so a save from an older version still loads.
+	for k in progress:
+		if data.get("progress", {}).has(k):
+			progress[k] = int(data["progress"][k])
+	for k in settings:
+		if data.get("settings", {}).has(k):
+			settings[k] = bool(data["settings"][k])
+
+
+func save_game() -> void:
+	if not saving_enabled:
+		return
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f == null:
+		push_warning("Could not write the save file.")
+		return
+	f.store_string(JSON.stringify({"version": 1, "progress": progress, "settings": settings}, "\t"))
+
+
+## A run is over: bank its gold and count the night.
+func bank_run(run_gold: int, survived: bool, run_kills: int) -> void:
+	progress["gold"] += run_gold
+	progress["runs"] += 1
+	if survived:
+		progress["nights_survived"] += 1
+	progress["best_kills"] = maxi(progress["best_kills"], run_kills)
+	save_game()
 
 
 # --- Game feel ---------------------------------------------------------------
@@ -220,7 +278,8 @@ func _setup_input() -> void:
 	_bind_keys("restart", [KEY_ENTER, KEY_KP_ENTER])
 	_bind_keys("reroll", [KEY_F])
 	_bind_keys("banish", [KEY_B])
-	_bind_button("restart", JOY_BUTTON_START)
+	_bind_keys("pause", [KEY_ESCAPE, KEY_P])
+	_bind_button("pause", JOY_BUTTON_START)
 
 
 func _ensure_action(action: String) -> void:

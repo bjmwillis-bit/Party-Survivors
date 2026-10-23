@@ -12,9 +12,12 @@ var _rows: Array = []
 var _levelup: Control
 var _levelup_title: Label
 var _cards: Array = []
-var _end: Control
-var _end_title: Label
-var _end_stats: Label
+var _pause: Control # the pause menu (Esc / Start)
+var _pause_resume: Button
+var _hint: Label
+var _levelup_shown_ms := 0 # when the cards appeared (for the input guard)
+const LEVELUP_GUARD_MS := 300
+const UiKit := preload("res://scripts/ui_kit.gd")
 var _gold_label: Label
 var _kills
 var _boss_box: VBoxContainer
@@ -146,6 +149,7 @@ func _ready() -> void:
 	party_box.add_child(_swap_label)
 
 	var hint := _label(18)
+	_hint = hint
 	hint.text = "Move: WASD     Aim: mouse     Skills: Q / E     Ultimate: R     Swap leader: Space     Revive: stand next to a fallen hero"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	hint.offset_left = -900
@@ -158,7 +162,7 @@ func _ready() -> void:
 
 	_build_skill_bar(root)
 	_build_levelup(root)
-	_build_end(root)
+	_build_pause(root)
 
 
 func _process(_delta: float) -> void:
@@ -213,8 +217,11 @@ func _process(_delta: float) -> void:
 			main.reroll_cards()
 		if Input.is_action_just_pressed("banish"):
 			_toggle_banish()
-	elif _end.visible and Input.is_action_just_pressed("restart"):
-		main.restart()
+	if Input.is_action_just_pressed("pause") and main.is_night() and not main.ended and not main.choosing:
+		set_paused(not _pause.visible)
+	# The controls hint steps aside after the first minute.
+	if Game.time_alive > 60.0 and _hint.modulate.a > 0.0:
+		_hint.modulate.a = maxf(0.0, _hint.modulate.a - _delta * 0.5)
 
 
 # --- Bosses, banners and the tally --------------------------------------------
@@ -353,6 +360,7 @@ func show_levelup(level: int, choices: Array, ult_level: bool) -> void:
 	_banish_mode = false
 	_update_levelup_buttons()
 	_levelup.visible = true
+	_levelup_shown_ms = Time.get_ticks_msec()
 
 
 ## Swaps one card for a new one (after a banish), replaying its reveal.
@@ -384,6 +392,9 @@ func _add_card(i: int, data: Dictionary) -> void:
 
 
 func _on_card_picked(i: int) -> void:
+	# A short guard, so a held key or a stray click can't pick by accident.
+	if Time.get_ticks_msec() - _levelup_shown_ms < LEVELUP_GUARD_MS and not Game.main.autopilot:
+		return
 	if _banish_mode:
 		Game.main.banish_card(i)
 	else:
@@ -439,33 +450,46 @@ func _toggle_banish() -> void:
 
 # --- End of run --------------------------------------------------------------
 
-func show_end(victory: bool, time_alive: float, kills: int, level: int, gold: int) -> void:
-	_end_title.text = "The beast is dead!" if victory else "The party fell"
-	var hunters: int = Game.main.minis_killed
-	_end_stats.text = "Survived %02d:%02d     Kills %d     Level %d     Hunters slain %d/4\n\nGold earned  %d\nNext unlock: a new hero  (coming soon)" % [
-		int(time_alive) / 60, int(time_alive) % 60, kills, level, hunters, gold]
-	_levelup.visible = false
-	_end.visible = true
+## Fades the whole HUD (it's a CanvasLayer, so its root Control fades).
+func fade_to(alpha: float, seconds: float, from := -1.0) -> void:
+	var r: Control = get_child(0)
+	if from >= 0.0:
+		r.modulate.a = from
+	create_tween().tween_property(r, "modulate:a", alpha, seconds)
 
 
-func _build_end(root: Control) -> void:
-	_end = _overlay(root)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 20)
-	_end.get_child(1).add_child(box)
-	_end_title = _label(56)
-	_end_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_end_title)
-	_end_stats = _label(26)
-	_end_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_end_stats)
-	var again := Button.new()
-	again.text = "Run again  [Enter]"
-	again.custom_minimum_size = Vector2(320, 64)
-	again.add_theme_font_size_override("font_size", 26)
-	again.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	again.pressed.connect(func() -> void: Game.main.restart())
-	box.add_child(again)
+# --- Pause menu --------------------------------------------------------------
+
+func set_paused(on: bool) -> void:
+	_pause.visible = on
+	get_tree().paused = on
+	if on:
+		UiKit.pop_in(_pause.get_child(0).get_child(0))
+		_pause_resume.grab_focus()
+
+
+func _build_pause(root: Control) -> void:
+	var m: Array = UiKit.modal(root, 0.55)
+	_pause = m[0]
+	var box: VBoxContainer = m[1]
+	var title := UiKit.label("Paused", 46, UiKit.GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	_pause_resume = UiKit.button("RESUME", true, Vector2(380, 66))
+	_pause_resume.pressed.connect(func() -> void: set_paused(false))
+	box.add_child(_pause_resume)
+	box.add_child(HSeparator.new())
+	UiKit.settings_box(box)
+	box.add_child(HSeparator.new())
+	var leave := UiKit.button("RETURN TO THE KEEP", false, Vector2(380, 62))
+	leave.tooltip_text = "Ends this night. The gold you've found is kept."
+	leave.pressed.connect(func() -> void:
+		_pause.visible = false
+		Game.main.withdraw())
+	box.add_child(leave)
+	var note := UiKit.label("Ends this night; you keep the gold found so far.", 18, UiKit.DIM)
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(note)
 
 
 # --- Helpers -----------------------------------------------------------------

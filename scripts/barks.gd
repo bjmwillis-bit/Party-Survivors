@@ -38,7 +38,8 @@ var _trapped_said := {} # hero kind -> true, once a hero has said it this run
 
 
 func _process(_delta: float) -> void:
-	_check_trapped()
+	if Game.main.is_night():
+		_check_trapped()
 
 
 ## The leader pushes against the runestones: "We're trapped."

@@ -155,6 +155,10 @@ var _model: Node3D # the KayKit placeholder model, if it loaded
 var _anim: AnimationPlayer
 var _anim_state := ""
 var _meshes: Array[MeshInstance3D] = []
+var _skel: Skeleton3D
+## Sitting by the fire: 0 standing, 1 seated on a log (blends while getting up).
+var sit := 0.0
+var seat_raise := 0.0 # how far the model lifts to sit on the log
 var _tint := -1
 
 
@@ -187,6 +191,11 @@ func _process(delta: float) -> void:
 	if _model != null:
 		_set_tint(2 if _flash > 0.0 else (1 if downed else 0))
 		_update_anim()
+		# The animation plays first, then the legs fold over the log if seated.
+		_anim.advance(delta)
+		if sit > 0.0:
+			fold_legs(_skel, sit)
+		_model.position.y = sit * seat_raise
 	elif _flash > 0.0:
 		_mat.albedo_color = Color.WHITE
 	elif downed:
@@ -437,6 +446,8 @@ func skill_is_passive(slot: String) -> bool:
 func cast(slot: String) -> bool:
 	if downed or dashing or skill_is_passive(slot) or cooldown[slot] > 0.0:
 		return false
+	if not Game.main.is_night():
+		return false # no skills at the fire or on the walk home
 	if slot == "r" and not is_leader:
 		return false # only the leader can use an ultimate
 	var done := false
@@ -933,21 +944,22 @@ static func _animations() -> AnimationLibrary:
 	return _anim_lib
 
 
-func _build_model() -> bool:
-	var m: Dictionary = MODELS.get(kind, {})
+## A hero's placeholder model, dressed and with every Rig_Medium animation
+## in an AnimationPlayer named "Anim". Null if the files are missing.
+## Also used by the campfire screen.
+static func create_model(hero_kind: String) -> Node3D:
+	var m: Dictionary = MODELS.get(hero_kind, {})
 	if m.is_empty():
-		return false
+		return null
 	var model := Game.model(KAYKIT + str(m["file"]))
 	if model == null:
-		return false
-	_model = model
-	_model.scale = Vector3.ONE * float(m["scale"])
-	_body.add_child(_model)
+		return null
+	model.scale = Vector3.ONE * float(m["scale"])
 	for n in m["hide"]:
-		var part := _model.find_child(n, true, false) as Node3D
+		var part := model.find_child(n, true, false) as Node3D
 		if part != null:
 			part.visible = false
-	var skel := _model.find_child("Skeleton3D", true, false) as Skeleton3D
+	var skel := model.find_child("Skeleton3D", true, false) as Skeleton3D
 	if skel != null and str(m["right"]) != "":
 		var weapon := Game.model(KAYKIT + str(m["right"]))
 		if weapon != null:
@@ -955,20 +967,77 @@ func _build_model() -> bool:
 			hand.bone_name = "handslot.r"
 			skel.add_child(hand)
 			hand.add_child(weapon)
+	var anim := AnimationPlayer.new()
+	anim.name = "Anim"
+	model.add_child(anim)
+	anim.add_animation_library("", _animations())
+	return model
+
+
+func _build_model() -> bool:
+	_model = create_model(kind)
+	if _model == null:
+		return false
+	_body.add_child(_model)
 	for mi in _model.find_children("*", "MeshInstance3D", true, false):
 		_meshes.append(mi)
-	_anim = AnimationPlayer.new()
-	_model.add_child(_anim)
-	_anim.add_animation_library("", _animations())
+	_anim = _model.get_node("Anim")
+	_anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	_skel = _model.find_child("Skeleton3D", true, false)
+	seat_raise = preload("res://scripts/camp.gd").seat_raise(_model.scale.y)
 	_update_anim()
 	return true
+
+
+## Bends the thighs forward and the shins down: a seated pose made from the
+## standing rig (the free pack has no sitting animation). `amount` 1 = seated,
+## 0 = standing, so getting up is a blend between the two.
+static func fold_legs(skel: Skeleton3D, amount: float) -> void:
+	if skel == null:
+		return
+	for side in ["l", "r"]:
+		var up := skel.find_bone("upperleg." + side)
+		var low := skel.find_bone("lowerleg." + side)
+		if up < 0 or low < 0:
+			continue
+		var splay := 0.12 if side == "l" else -0.12
+		var up_bend := Quaternion(Vector3.RIGHT, -1.5) * Quaternion(Vector3.FORWARD, splay)
+		var low_bend := Quaternion(Vector3.RIGHT, 1.45)
+		skel.set_bone_pose_rotation(up, skel.get_bone_rest(up).basis.get_rotation_quaternion() * Quaternion.IDENTITY.slerp(up_bend, amount))
+		skel.set_bone_pose_rotation(low, skel.get_bone_rest(low).basis.get_rotation_quaternion() * Quaternion.IDENTITY.slerp(low_bend, amount))
+
+
+## Everything needed to put a fresh copy of this hero exactly where this one
+## is, mid-step (used when a new night starts without a cut).
+func snapshot() -> Dictionary:
+	var d := {"position": position, "rotation": rotation.y, "facing": facing, "sit": sit,
+		"moving": moving, "move_dir": move_dir, "anim": "", "anim_pos": 0.0}
+	if _anim != null:
+		d["anim"] = _anim.current_animation
+		d["anim_pos"] = _anim.current_animation_position if _anim.current_animation != "" else 0.0
+	return d
+
+
+func restore(d: Dictionary) -> void:
+	position = d["position"]
+	rotation.y = d["rotation"]
+	facing = d["facing"]
+	sit = d["sit"]
+	moving = d["moving"]
+	move_dir = d["move_dir"]
+	if _anim != null and d["anim"] != "" and _anim.has_animation(d["anim"]):
+		_anim_state = d["anim"]
+		_anim.play(d["anim"])
+		_anim.seek(d["anim_pos"], true)
 
 
 ## Picks the animation for what the hero is doing right now.
 func _update_anim() -> void:
 	var want := "Idle_A"
 	var speed_scale := 1.0
-	if downed:
+	if sit > 0.0:
+		pass # seated (or getting up): breathe
+	elif downed:
 		want = "Death_A"
 	elif dashing:
 		want = "Running_A"
@@ -1149,8 +1218,8 @@ func _build_hp_ring() -> void:
 
 
 func _update_hp_ring(delta: float) -> void:
-	_hp_ring.visible = not downed
-	if downed:
+	_hp_ring.visible = not downed and Game.main.is_night()
+	if not _hp_ring.visible:
 		return
 	_hp_ring.global_position = Vector3(global_position.x, 0.06, global_position.z)
 	var frac := clampf(hp / max_hp, 0.0, 1.0)
