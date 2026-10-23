@@ -31,6 +31,8 @@ func attack() -> bool:
 
 
 func tick(delta: float) -> void:
+	if h.guard:
+		return # guards only make basic attacks
 	_lesson_t -= delta
 	if _lesson_t <= 0.0:
 		_lesson_t = LESSON_EVERY

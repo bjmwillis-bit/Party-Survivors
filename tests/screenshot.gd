@@ -6,6 +6,9 @@ extends SceneTree
 var _shots: Array = []
 var _out := ""
 var _taken := 0
+var _frames := 0
+## CAMP=1: one picture of the campfire before the night, then quit.
+var _camp := false
 
 
 func _initialize() -> void:
@@ -13,7 +16,8 @@ func _initialize() -> void:
 		_shots.append(float(s))
 	_out = OS.get_environment("OUT")
 	var game = root.get_node("Game")
-	game.skip_camp = true
+	_camp = OS.get_environment("CAMP") == "1"
+	game.skip_camp = not _camp
 	game.saving_enabled = false
 	# PARTY=kheiron,halvar,rhian photographs another trio.
 	var picked := OS.get_environment("PARTY")
@@ -23,8 +27,15 @@ func _initialize() -> void:
 
 
 func _process(_delta: float) -> bool:
+	_frames += 1
 	var main = current_scene
 	if main == null or not main.has_method("choose_upgrade"):
+		return false
+	if _camp:
+		if _frames == 60:
+			root.get_texture().get_image().save_png(_out + "/camp.png")
+			print("saved ", _out, "/camp.png")
+			return true
 		return false
 	var game = root.get_node("Game")
 	if game.party == null:

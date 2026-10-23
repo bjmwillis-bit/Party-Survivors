@@ -1,6 +1,6 @@
 extends Node3D
-## The party's camp at the centre of the arena: a fire, three logs, and the
-## broken walls of the Keep behind it. Between nights the party sits here,
+## The party's camp at the centre of the arena, in the Keep's courtyard
+## (keep.gd): a fire, three logs, and a few stores. Between nights the party sits here,
 ## and the camera settles into a low shot of the fire. Nights start and end
 ## here, in one continuous shot (main.gd directs it).
 ##
@@ -163,17 +163,10 @@ func _build_logs() -> void:
 		add_child(m)
 
 
-## The Keep's broken walls behind the fire (the Keep proper comes later).
+## A few stores and leavings in the courtyard round the fire.
 func _build_ruin() -> void:
 	var pieces := [
-		["wall_broken", Vector3(-6.5, 0, -8.0), 8.0, true],
-		["wall_cracked", Vector3(-3.0, 0, -9.0), 0.0, true],
-		["pillar", Vector3(-1.0, 0, -9.0), 0.0, true],
-		["wall_broken", Vector3(3.6, 0, -9.0), 180.0, true],
-		["pillar_decorated", Vector3(6.2, 0, -8.6), 0.0, true],
-		["wall_cracked", Vector3(8.6, 0, -7.0), -35.0, true],
-		["banner_patternA_red", Vector3(-3.0, 0, -9.05), 0.0, false],
-		["rubble_half", Vector3(0.6, 0, -7.6), 160.0, false],
+		["rubble_half", Vector3(-7.6, 0, -6.2), 160.0, false],
 		["barrel_large", Vector3(-5.2, 0, -4.8), 0.0, true],
 		["crates_stacked", Vector3(5.6, 0, -4.4), -20.0, true],
 		["sword_shield_broken", Vector3(3.6, 0, 0.9), 40.0, false],

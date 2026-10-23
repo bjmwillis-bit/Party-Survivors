@@ -354,6 +354,8 @@ const RUIN_SITES := [
 	[["rubble_large", 0.0, 0.0, 0.0, 0.0], ["column", 3.8, 1.5, 0.0, 0.4], ["sword_shield_broken", -2.0, 2.0, -40.0, 0.0]],
 	[["barrel_large", 0.0, 0.0, 0.0, 0.8], ["crates_stacked", 2.0, 0.4, 20.0, 1.0], ["barrel_large", 0.4, 1.8, 0.0, 0.8], ["sword_shield_broken", 2.2, 2.4, 70.0, 0.0]],
 ]
+## Ruins and braziers keep this far from the middle, clear of the Keep.
+const KEEP_CLEAR := 21.0
 ## Braziers: a column with a lit torch on top, throwing warm light.
 const BRAZIERS := 6
 
@@ -366,7 +368,7 @@ func _build_ruins() -> void:
 	while placed.size() < 22 and tries < 400:
 		tries += 1
 		var p := _random_spot(rng, Game.ARENA_RADIUS - 7.0)
-		if p.length() < 12.0 or _too_close(p, placed, 14.0):
+		if p.length() < KEEP_CLEAR or _too_close(p, placed, 14.0):
 			continue
 		placed.append(p)
 		var site: Array = RUIN_SITES[rng.randi() % RUIN_SITES.size()]
@@ -379,7 +381,7 @@ func _build_ruins() -> void:
 	while lit < BRAZIERS and tries < 400:
 		tries += 1
 		var p := _random_spot(rng, Game.ARENA_RADIUS - 8.0)
-		if _too_close(p, placed, 6.0) or p.length() < 14.0:
+		if _too_close(p, placed, 6.0) or p.length() < KEEP_CLEAR:
 			continue
 		placed.append(p)
 		_brazier(p)

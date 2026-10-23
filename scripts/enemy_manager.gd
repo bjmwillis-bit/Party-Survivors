@@ -48,6 +48,13 @@ var dot_t := PackedFloat32Array() # seconds left taking damage over time
 var dot_dmg := PackedFloat32Array() # damage per second-tick
 var dot_acc := PackedFloat32Array()
 var age := PackedFloat32Array() # seconds since spawning
+## Routes round the Keep (keep.gd): where each enemy is heading, rethought a
+## few times a second: the hero it's after, and whether it's heading for a
+## waypoint (route_via = 1) or straight at the hero.
+var route_to := PackedVector2Array()
+var route_t := PackedFloat32Array()
+var route_hero := PackedInt32Array()
+var route_via := PackedByteArray()
 
 ## A swarm event doubles spawning, mostly tiny swarmlings.
 var swarm_active := false
@@ -78,6 +85,10 @@ func _ready() -> void:
 	slow_t.resize(MAX_ENEMIES)
 	slow_amt.resize(MAX_ENEMIES)
 	age.resize(MAX_ENEMIES)
+	route_to.resize(MAX_ENEMIES)
+	route_t.resize(MAX_ENEMIES)
+	route_hero.resize(MAX_ENEMIES)
+	route_via.resize(MAX_ENEMIES)
 	dot_t.resize(MAX_ENEMIES)
 	dot_dmg.resize(MAX_ENEMIES)
 	dot_acc.resize(MAX_ENEMIES)
@@ -308,6 +319,10 @@ func _remove_dead() -> void:
 			slow_t[i] = slow_t[last]
 			slow_amt[i] = slow_amt[last]
 			age[i] = age[last]
+			route_to[i] = route_to[last]
+			route_t[i] = route_t[last]
+			route_hero[i] = route_hero[last]
+			route_via[i] = route_via[last]
 			dot_t[i] = dot_t[last]
 			dot_dmg[i] = dot_dmg[last]
 			dot_acc[i] = dot_acc[last]
@@ -366,6 +381,9 @@ func spawn(k: int, p: Vector2) -> int:
 	dot_dmg[i] = 0.0
 	dot_acc[i] = 0.0
 	age[i] = 0.0
+	route_t[i] = 0.0
+	route_hero[i] = -1
+	route_via[i] = 0
 	count += 1
 	return i
 
@@ -391,6 +409,7 @@ func _rebuild_grid() -> void:
 
 func _move(delta: float) -> void:
 	var heroes: Array = Game.party.heroes
+	var keep = Game.keep
 	var alive: Array[bool] = []
 	var hero_xz: Array[Vector2] = []
 	var any_alive := false
@@ -438,7 +457,26 @@ func _move(delta: float) -> void:
 			if age[i] > GOBLIN_LIFE:
 				hp[i] = -1.0 # gone, no reward
 		elif dist < INF and dist > 0.6 + 0.4 * (SCALE[k] - 1.0):
-			v = (hero_xz[best] - p) / dist * SPEED[k]
+			var goal: Vector2 = hero_xz[best]
+			if keep != null:
+				# Round the Keep's walls and in through its gates.
+				route_t[i] -= delta
+				if route_t[i] <= 0.0 or route_hero[i] != best:
+					route_t[i] = 0.2 + 0.15 * float((i * 7 + _frame) % 10) / 10.0
+					var costs := PackedFloat32Array()
+					if best < keep.hero_costs.size():
+						costs = keep.hero_costs[best]
+					var wp: Vector2 = keep.next_point(p, goal, costs)
+					route_to[i] = wp
+					route_hero[i] = best
+					route_via[i] = 1 if wp != goal else 0
+				if route_via[i] == 1:
+					goal = route_to[i]
+					if p.distance_squared_to(goal) < 0.8:
+						route_t[i] = 0.0 # at the waypoint: on to the next
+			var to_goal := goal - p
+			var gl := to_goal.length()
+			v = to_goal / gl * SPEED[k] if gl > 0.01 else Vector2.ZERO
 			if slow_t[i] > 0.0:
 				v *= 1.0 - slow_amt[i]
 		if slow_t[i] > 0.0:

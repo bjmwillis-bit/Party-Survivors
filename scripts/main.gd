@@ -20,6 +20,7 @@ const ChestsScript := preload("res://scripts/chests.gd")
 const ArenaScript := preload("res://scripts/arena.gd")
 const BarksScript := preload("res://scripts/barks.gd")
 const CampScript := preload("res://scripts/camp.gd")
+const KeepScript := preload("res://scripts/keep.gd")
 const CampUiScript := preload("res://scripts/camp_ui.gd")
 
 enum { CAMP, SETTING_OUT, NIGHT, HOMEWARD }
@@ -37,6 +38,7 @@ const CAM_DISTANCE := 24.0
 var camera: Camera3D
 var arena
 var camp
+var keep
 var camp_ui
 var state := CAMP
 var level := 1
@@ -308,6 +310,7 @@ func _on_party_changed() -> void:
 		return
 	_fresh_night()
 	_seat_party(true)
+	keep.refresh_guards() # whoever left the party takes their post
 
 
 ## A fall: behind the black, a fresh night and the party back at the fire.
@@ -570,3 +573,5 @@ func _build_world() -> void:
 	add_child(arena)
 	camp = CampScript.new() # after the arena: it adds its own obstacles
 	add_child(camp)
+	keep = KeepScript.new() # the walls round the camp, and their guards
+	add_child(keep)

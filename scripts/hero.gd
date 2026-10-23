@@ -23,6 +23,10 @@ var max_hp := 100.0
 var hp := 100.0
 var downed := false
 var is_leader := false
+## A benched hero standing guard on the Keep (keep.gd): basic attacks only,
+## at GUARD_DAMAGE, with no party bonuses or cards. Never hurt.
+var guard := false
+const GUARD_DAMAGE := 0.5
 var revive_progress := 0.0
 
 # --- Numbers the cards change ------------------------------------------------
@@ -209,7 +213,7 @@ func _process(delta: float) -> void:
 
 	if Game.main.is_night():
 		_tick_attack(delta)
-		if not is_leader:
+		if not is_leader and not guard:
 			_ai_cast()
 
 
@@ -217,6 +221,8 @@ func _process(delta: float) -> void:
 
 ## Basic-attack damage with every bonus applied, times `mult`.
 func power(mult := 1.0) -> float:
+	if guard:
+		return base_damage * GUARD_DAMAGE * mult
 	var p: float = base_damage * damage_mult * Game.party.might * mult
 	if is_leader:
 		p *= Game.party.lead_bonus
@@ -235,11 +241,15 @@ func ult_power(mult := 1.0) -> float:
 
 
 func area() -> float:
+	if guard:
+		return area_mult
 	return area_mult * Game.party.reach
 
 
 ## How many swipes, axes, bolts... per basic attack.
 func instances() -> int:
+	if guard:
+		return int(data.get("instances", 1))
 	return int(data.get("instances", 1)) + extra_instances + Game.party.echo
 
 
@@ -272,6 +282,9 @@ func flash(seconds := 0.12) -> void:
 ## it lands. No basic attacks or walking meanwhile.
 func start_motion(to: Vector3, seconds: float, hop := 0.0, on_step := Callable(), on_end := Callable()) -> void:
 	var t2: Vector2 = Game.clamp_arena(Vector2(to.x, to.z))
+	# Dashes stop at the Keep's walls; leaps (a real hop) can clear them.
+	if Game.keep != null and hop < 1.0:
+		t2 = Game.keep.clip(Vector2(position.x, position.z), t2)
 	_mv_from = position
 	_mv_to = Vector3(t2.x, 0.0, t2.y)
 	_mv_t = 0.0
@@ -324,6 +337,8 @@ func cancel_motion() -> void:
 # --- Basic attacks -------------------------------------------------------------
 
 func attack_rate() -> float:
+	if guard:
+		return rate_mult * (1.0 + buff_rate)
 	return rate_mult * Game.party.haste * (1.0 + buff_rate) * (1.0 + Game.party.anvil_bonus(position))
 
 
@@ -441,7 +456,7 @@ func _ai_cast() -> void:
 
 ## A blow from an enemy.
 func take_hit(amount: float, attacker: int) -> void:
-	if downed or invulnerable or untargetable:
+	if downed or invulnerable or untargetable or guard:
 		return
 	take_damage(amount)
 	if not downed:
@@ -784,7 +799,7 @@ func _build_hp_ring() -> void:
 
 
 func _update_hp_ring(delta: float) -> void:
-	_hp_ring.visible = not downed and Game.main.is_night()
+	_hp_ring.visible = not downed and Game.main.is_night() and not guard
 	if not _hp_ring.visible:
 		return
 	_hp_ring.global_position = Vector3(global_position.x, 0.06, global_position.z)

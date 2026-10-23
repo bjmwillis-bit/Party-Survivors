@@ -138,6 +138,14 @@ func _move_directed(delta: float) -> void:
 		var to: Vector3 = d["to"] - h.position
 		to.y = 0.0
 		var dist := to.length()
+		# Home through the Keep's gates, not through its walls.
+		if Game.keep != null and dist >= 0.12:
+			var hxz := Vector2(h.position.x, h.position.z)
+			var dest := Vector2(d["to"].x, d["to"].z)
+			var nxt: Vector2 = Game.keep.next_point(hxz, dest)
+			if nxt != dest:
+				to = Vector3(nxt.x - hxz.x, 0.0, nxt.y - hxz.y)
+				dist = maxf(0.13, to.length())
 		if dist < 0.12:
 			h.moving = false
 			h.move_dir = Vector3.ZERO
@@ -352,6 +360,13 @@ func _move_followers(delta: float) -> void:
 				goal = Vector3(Game.enemies.pos[e].x, 0.0, Game.enemies.pos[e].y)
 				stop = h.engage_range()
 
+		# Round the Keep's walls and through its gates.
+		if Game.keep != null:
+			var gxz: Vector2 = Game.push_out(Vector2(goal.x, goal.z), 0.45)
+			var nxt: Vector2 = Game.keep.next_point(hxz, gxz)
+			if nxt != gxz:
+				goal = Vector3(nxt.x, 0.0, nxt.y)
+				stop = 0.3
 		var to: Vector3 = goal - h.position
 		to.y = 0.0
 		var d := to.length()
@@ -442,7 +457,7 @@ func _edge_target(hxz: Vector2, lxz: Vector2, current: int) -> int:
 	for n in range(0, near.size(), stride):
 		var i: int = near[n]
 		var p: Vector2 = E.pos[i]
-		if p.distance_to(lxz) > LEASH:
+		if p.distance_to(lxz) > LEASH or not _reachable(hxz, p):
 			continue
 		var score: float = hxz.distance_to(p) + 0.6 * float(E.query(p, MELEE_CROWD).size())
 		if i == current:
@@ -467,7 +482,7 @@ func _quiet_side(h, hxz: Vector2, txz: Vector2, lxz: Vector2) -> Vector2:
 	for k in 9:
 		var dir: Vector2 = current if k == 8 else Vector2.from_angle(k * TAU / 8.0)
 		var p := txz + dir * stand
-		if p.distance_to(lxz) > LEASH * 0.95 or Game.blocked(p, 0.4) or Game.clamp_arena(p) != p:
+		if p.distance_to(lxz) > LEASH * 0.95 or Game.blocked(p, 0.4) or Game.clamp_arena(p) != p or not _reachable(txz, p):
 			continue
 		var score: float = float(Game.enemies.query(p, MELEE_CROWD).size()) + 0.15 * p.distance_to(hxz)
 		if k == 8:
@@ -486,13 +501,18 @@ func _escape_spot(hxz: Vector2, lxz: Vector2) -> Vector2:
 	for ring in [3.0, 5.0]:
 		for k in 8:
 			var p: Vector2 = hxz + Vector2.from_angle(k * TAU / 8.0) * ring
-			if p.distance_to(lxz) > LEASH * 0.9 or Game.blocked(p, 0.4) or Game.clamp_arena(p) != p:
+			if p.distance_to(lxz) > LEASH * 0.9 or Game.blocked(p, 0.4) or Game.clamp_arena(p) != p or not _reachable(hxz, p):
 				continue
 			var score: float = float(Game.enemies.query(p, 3.0).size()) + 0.3 * p.distance_to(lxz)
 			if score < best_score:
 				best_score = score
 				best = p
 	return best
+
+
+## True if a hero can walk straight from `a` to `b` (no Keep wall between).
+func _reachable(a: Vector2, b: Vector2) -> bool:
+	return Game.keep == null or Game.keep.clear(a, b, 0.3)
 
 
 ## The living healer a hurt hero should run to (not themselves).
@@ -536,7 +556,7 @@ func _quietest_spot(from: Vector2, target: Vector2, keep: float, lxz: Vector2, n
 				continue
 			if zone_r > 0.0 and p.distance_to(zone) > zone_r:
 				continue
-			if Game.blocked(p, 0.4) or Game.clamp_arena(p) != p:
+			if Game.blocked(p, 0.4) or Game.clamp_arena(p) != p or not _reachable(from, p):
 				continue
 			# Fewest enemies close by; break ties by not walking far.
 			var score: float = float(Game.enemies.query(p, KITE_CROWD_RADIUS).size()) + ring * 0.05

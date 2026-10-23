@@ -13,6 +13,7 @@ var xp
 var fx
 var hud
 var barks
+var keep # the Keep in the middle of the arena (keep.gd): walls, routing, guards
 
 var time_alive := 0.0
 var kills := 0
@@ -170,8 +171,24 @@ const OBSTACLE_CELL := 4.0
 var _obstacles := {}
 
 
+## Solid boxes (the Keep's walls), Rect2 on the ground (x, z), in the same grid.
+var _boxes := {}
+
+
 func clear_obstacles() -> void:
 	_obstacles.clear()
+	_boxes.clear()
+
+
+func add_box(r: Rect2) -> void:
+	var lo := Vector2i(floori((r.position.x - 1.5) / OBSTACLE_CELL), floori((r.position.y - 1.5) / OBSTACLE_CELL))
+	var hi := Vector2i(floori((r.end.x + 1.5) / OBSTACLE_CELL), floori((r.end.y + 1.5) / OBSTACLE_CELL))
+	for gx in range(lo.x, hi.x + 1):
+		for gy in range(lo.y, hi.y + 1):
+			var key := Vector2i(gx, gy)
+			if not _boxes.has(key):
+				_boxes[key] = []
+			_boxes[key].append(r)
 
 
 func add_obstacle(at: Vector2, radius: float) -> void:
@@ -187,7 +204,12 @@ func add_obstacle(at: Vector2, radius: float) -> void:
 
 ## Moves a point of the given radius out of any obstacle it overlaps.
 func push_out(p: Vector2, radius: float) -> Vector2:
-	var cell = _obstacles.get(Vector2i(floori(p.x / OBSTACLE_CELL), floori(p.y / OBSTACLE_CELL)))
+	var key := Vector2i(floori(p.x / OBSTACLE_CELL), floori(p.y / OBSTACLE_CELL))
+	var boxes = _boxes.get(key)
+	if boxes != null:
+		for r: Rect2 in boxes:
+			p = _push_out_box(p, radius, r)
+	var cell = _obstacles.get(key)
 	if cell == null:
 		return p
 	for o in cell:
@@ -199,6 +221,31 @@ func push_out(p: Vector2, radius: float) -> Vector2:
 			var l := sqrt(l2)
 			p = c + (d / l if l > 0.001 else Vector2.RIGHT) * min_d
 	return p
+
+
+## Out of a box: to the nearest point `radius` clear of it.
+func _push_out_box(p: Vector2, radius: float, r: Rect2) -> Vector2:
+	var cx := clampf(p.x, r.position.x, r.end.x)
+	var cy := clampf(p.y, r.position.y, r.end.y)
+	var d := Vector2(p.x - cx, p.y - cy)
+	var l2 := d.length_squared()
+	if l2 >= radius * radius:
+		return p
+	if l2 > 0.000001:
+		return Vector2(cx, cy) + d / sqrt(l2) * radius
+	# Inside the box: out through the nearest side.
+	var left := p.x - r.position.x
+	var right := r.end.x - p.x
+	var top := p.y - r.position.y
+	var bottom := r.end.y - p.y
+	var m := minf(minf(left, right), minf(top, bottom))
+	if m == left:
+		return Vector2(r.position.x - radius, p.y)
+	if m == right:
+		return Vector2(r.end.x + radius, p.y)
+	if m == top:
+		return Vector2(p.x, r.position.y - radius)
+	return Vector2(p.x, r.end.y + radius)
 
 
 func blocked(p: Vector2, radius: float) -> bool:

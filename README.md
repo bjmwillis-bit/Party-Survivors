@@ -119,6 +119,16 @@ The leader deals 20% more damage. Swapping has a 1-second cooldown and a small e
 - When the Beast arrives at 12:00, a **faint sunrise** begins.
 - Colours and timings live at the top of `scripts/arena.gd` (`SKY`, `NIGHTFALL`).
 
+## The Keep
+
+A ruined square fort in the middle of the arena, about 24 m across, with the campfire in its courtyard (look reference: `docs/reference/keep-mockup.jpg`).
+- **Walls** of chunky stone blocks, broken to different heights (lower at the front so you can see into the courtyard), moss on top, rubble at the foot. Thick piers at the corners and a **square tower** at the back.
+- **Three gates:** front, left and right. The back is shut.
+- **Walls block everyone.** Enemies walk round the corners and come in through the gates, so the gates are chokepoints. Camping in the Keep is allowed but the horde floods in. Followers find their way through the gates too. Dashes stop at a wall; real leaps (Cenhelm's, Cael's) can clear one.
+- **See-through:** a tall stretch of wall fades while a hero stands behind it.
+- **Guards:** heroes not in your party stand on the gates (then the tower) and fight with **basic attacks only**, at **half damage**, with no cards or party bonuses. They can't be hurt and the horde ignores them. Change your party at the fire and the guards change with it.
+- How it works: `scripts/keep.gd`. Routing uses a dozen waypoints round the walls and through the gates instead of pathfinding for every enemy, so hundreds of enemies cost very little.
+
 ## Captions
 
 Spoken lines show as captions at the bottom of the screen until the voices are recorded:
@@ -153,14 +163,15 @@ Party cards (up to 5 each): Might, Haste, Vigour, Swiftness, Keen Eyes, Reach, F
 - `tests/smoke_test.gd`: a bot that plays a full run without a window and reports how it went. Run it with:
   `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd` (tests skip the campfire and never touch your save)
 - `tests/follower_test.gd`: compares the melee follower AI with the old "walk up and stand there" behaviour. The first hero leads all night, so the other two are followers throughout. `PARTY=kheiron,halvar,rhian MELEE_AI=old` (or `new`).
+- `tests/keep_test.gd`: `MODE=camp` stands by the fire all night and counts enemies inside the walls and any stuck on them; `MODE=roam` walks out of the front gate, circles the Keep and walks back in, checking the followers keep up.
 - `tests/all_cards_test.gd`: switches on every card at once and plays two minutes, to catch broken card effects.
 
 ## Placeholder art
 
-Until the real heroes arrive, the party wears models from **KayKit Adventurers 2.0** (Knight = Solenne, without her helmet; Barbarian = Cenhelm; Mage = Kheiron), with idle, run and death animations from the same pack. The ruins, braziers and chests come from **KayKit Dungeon Pack 1.1**. Walls, pillars, rubble, barrels and braziers are solid: heroes and enemies walk round them.
+Until the real heroes arrive, the party wears models from **KayKit Adventurers 2.0** (Knight = Solenne, without her helmet; Barbarian = Cenhelm; Mage = Kheiron), with idle, run and death animations from the same pack. The ruins, braziers and chests come from **KayKit Dungeon Pack 1.1**. Walls, pillars, rubble, barrels and braziers are solid: heroes and enemies walk round them. The Keep is built from simple blocks in code.
 
 Both packs are by Kay Lousberg (www.kaylousberg.com) and are CC0 (licences in `assets/kaykit/`). If a model file is missing, the game falls back to the grey-box shapes.
 
 ## Next
 
-The Keep: a closed square round the camp with gates, guards on the walls, and see-through walls.
+Boss attacks (being designed), then talent trees, rescue nights and new heroes, and the opening cutscene. For the Keep later: the dungeon entrance and the Heart (story-draft-v1).
