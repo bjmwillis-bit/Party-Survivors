@@ -192,7 +192,7 @@ func _seat_party(instant: bool) -> void:
 	state = CAMP
 	_seated = instant
 	for h in Game.party.heroes:
-		var seat: Dictionary = camp.SEATS.get(h.kind, {"pos": Vector3.ZERO, "face": 0.0, "sit": false})
+		var seat: Dictionary = camp.seat_for(Game.party.heroes.find(h))
 		var face := deg_to_rad(seat["face"])
 		if instant:
 			h.position = seat["pos"]
@@ -263,7 +263,7 @@ func _go_home() -> void:
 func _tick_homeward(_delta: float) -> void:
 	Game.enemies.dissolve(25)
 	for h in Game.party.heroes:
-		var seat: Dictionary = camp.SEATS.get(h.kind, {})
+		var seat: Dictionary = camp.seat_for(Game.party.heroes.find(h))
 		if Game.party.arrived(h) and seat.get("sit", false) and h.sit == 0.0 and not h.has_meta("sitting_down"):
 			h.set_meta("sitting_down", true)
 			var tw := create_tween()
@@ -272,7 +272,7 @@ func _tick_homeward(_delta: float) -> void:
 	if not _seated:
 		var all_home := true
 		for h in Game.party.heroes:
-			var seat: Dictionary = camp.SEATS.get(h.kind, {})
+			var seat: Dictionary = camp.seat_for(Game.party.heroes.find(h))
 			all_home = all_home and Game.party.arrived(h) and (h.sit >= 1.0 or not seat.get("sit", false))
 		if all_home:
 			_seated = true

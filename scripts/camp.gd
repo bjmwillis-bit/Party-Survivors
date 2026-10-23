@@ -15,12 +15,17 @@ const LOGS := [
 	[Vector3(2.3, 0.0, -0.4), -58.0, 2.4], # Solenne's, on the right
 ]
 const LOG_RADIUS := 0.24
-## Where each hero rests: position, facing (degrees), and whether they sit.
-const SEATS := {
-	"cenhelm": {"pos": Vector3(0.0, 0.0, -2.3), "face": 0.0, "sit": true},
-	"kheiron": {"pos": Vector3(-2.05, 0.0, -0.55), "face": 62.0, "sit": true},
-	"solenne": {"pos": Vector3(2.55, 0.0, -1.1), "face": -50.0, "sit": false},
-}
+## Where each party member rests, by their place in the party: position,
+## facing (degrees), and whether they sit. The first (the leader) stands.
+const SEATS := [
+	{"pos": Vector3(2.55, 0.0, -1.1), "face": -50.0, "sit": false},
+	{"pos": Vector3(0.0, 0.0, -2.3), "face": 0.0, "sit": true},
+	{"pos": Vector3(-2.05, 0.0, -0.55), "face": 62.0, "sit": true},
+]
+
+
+static func seat_for(index: int) -> Dictionary:
+	return SEATS[clampi(index, 0, SEATS.size() - 1)]
 ## Where the party gathers when they set out (in front of the fire).
 const SET_OUT := [Vector3(0.0, 0.0, 4.6), Vector3(-1.0, 0.0, 3.2), Vector3(1.0, 0.0, 3.2)]
 const FIRE_BLOCK := 0.95 # nobody walks through the fire

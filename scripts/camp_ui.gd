@@ -9,36 +9,7 @@ const UiKit := preload("res://scripts/ui_kit.gd")
 
 signal fight
 
-## The hero sheets (HEROES, or click a hero at the fire).
-const SHEETS := {
-	"solenne": {
-		"sect": "Knights Templar", "line": "No helmet, no shield. One sword, two blades on one hilt.",
-		"role": "Duelist. Slashes in an arc, and grows stronger each time she's struck (Contempt).",
-		"skills": [
-			["Q", "I'll Give You My Back", "passive", "Every blow she takes has a 30% chance to counter-skewer the attacker, piercing up to 4 enemies."],
-			["E", "Face Me", "16 s", "Taunts enemies within 6 m for 6 s, and she takes 40% less damage."],
-			["R", "Ultrix", "45 s", "A slash as she steps back, then an 8 m lunge where you aim. Untouchable throughout."],
-		],
-	},
-	"cenhelm": {
-		"sect": "The Horn", "line": "Bare hands. A horn. He walks out for his people.",
-		"role": "Bulwark. Left-right punches that splash; hits harder the more health he has, and takes a quarter of the blows aimed at his allies.",
-		"skills": [
-			["Q", "The Gate", "10 s", "A ground slam around him. Every punch takes 1 s off the cooldown."],
-			["E", "Walk Out", "12 s", "Dashes to the most hurt ally in the leash, stunning enemies on the way and where he lands."],
-			["R", "The Horn", "40 s", "Everything within 16 m is slowed by half for 6 s, takes damage each second and is pushed back."],
-		],
-	},
-	"kheiron": {
-		"sect": "The Grove", "line": "Points at one Student. Carries a wound.",
-		"role": "Healer. Fires bolts from range and keeps the party standing. Healing on him is halved.",
-		"skills": [
-			["Q", "Lesson", "4 s", "Heals the lowest health ally (never himself) for 5% of their max health."],
-			["E", "The Grove", "14 s", "A leash-sized grove for 4 s; allies inside heal 1.5% of max health a second."],
-			["R", "Give the Sky", "60 s", "Pays 20% of his health to reset the other heroes' ultimates."],
-		],
-	},
-}
+const HeroData := preload("res://scripts/hero_data.gd")
 
 var shown := false
 var _root: Control
@@ -238,9 +209,10 @@ func _build_sheet() -> void:
 	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
 	tabs.add_theme_constant_override("separation", 14)
 	outer.add_child(tabs)
-	for kind in ["solenne", "cenhelm", "kheiron"]:
-		var b := UiKit.button(HeroScript.DATA[kind]["name"], false, Vector2(200, 54))
-		b.add_theme_color_override("font_color", (HeroScript.DATA[kind]["accent"] as Color).lerp(Color.WHITE, 0.35))
+	for kind in HeroData.ORDER:
+		var b := UiKit.button(HeroData.HEROES[kind]["name"], false, Vector2(150, 50))
+		b.add_theme_font_size_override("font_size", 22)
+		b.add_theme_color_override("font_color", (HeroData.HEROES[kind]["accent"] as Color).lerp(Color.WHITE, 0.35))
 		var k: String = kind
 		b.pressed.connect(func() -> void: _show_sheet(k))
 		tabs.add_child(b)
@@ -266,19 +238,23 @@ func _open_sheet(kind: String) -> void:
 func _show_sheet(kind: String) -> void:
 	for c in _sheet_box.get_children():
 		c.queue_free()
-	var d: Dictionary = HeroScript.DATA[kind]
-	var s: Dictionary = SHEETS[kind]
+	var d: Dictionary = HeroData.get_hero(kind)
 	var accent: Color = (d["accent"] as Color).lerp(Color.WHITE, 0.3)
 	_sheet_box.add_child(UiKit.label(d["name"], 46, accent))
-	_sheet_box.add_child(UiKit.label("%s   ·   %d health" % [s["sect"], int(d["hp"])], 22, UiKit.DIM))
-	_sheet_box.add_child(UiKit.label(s["line"], 22, UiKit.TEXT.darkened(0.15)))
-	var role := UiKit.label(s["role"], 24)
+	_sheet_box.add_child(UiKit.label("%s   ·   %d health" % [d["sect"], int(d["hp"])], 22, UiKit.DIM))
+	_sheet_box.add_child(UiKit.label(d["line"], 22, UiKit.TEXT.darkened(0.15)))
+	var role := UiKit.label(d["role"], 24)
 	role.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_sheet_box.add_child(role)
 	_sheet_box.add_child(HSeparator.new())
-	for sk in s["skills"]:
-		_sheet_box.add_child(UiKit.label("[%s]  %s   (%s)" % [sk[0], sk[1], sk[2]], 26, accent))
-		var body := UiKit.label(sk[3], 22)
+	if d.has("passive"):
+		var pas := UiKit.label(d["passive"], 22, UiKit.TEXT.darkened(0.1))
+		pas.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_sheet_box.add_child(pas)
+	for sk in [["Q", "skill"], ["E", "ult"]]:
+		var a: Dictionary = d[sk[1]]
+		_sheet_box.add_child(UiKit.label("[%s]  %s   (%d s)" % [sk[0], a["name"], int(a["cd"])], 26, accent))
+		var body := UiKit.label(a["desc"], 22)
 		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_sheet_box.add_child(body)
 	_sheet_box.add_child(UiKit.label("Talents: coming soon", 20, UiKit.DIM))
@@ -301,7 +277,7 @@ func say(lines: Array, delay := 0.0) -> void:
 	var tw := create_tween()
 	tw.tween_interval(delay)
 	for ln in lines:
-		var col: Color = (HeroScript.DATA[ln[2]]["accent"] as Color).lerp(Color.WHITE, 0.4)
+		var col: Color = (HeroData.HEROES[ln[2]]["accent"] as Color).lerp(Color.WHITE, 0.4)
 		var text: String = ("%s:  %s" % [ln[0], ln[1]]) if ln[0] != "" else "(%s)" % ln[1]
 		var stage: bool = ln[0] == ""
 		tw.tween_callback(func() -> void:

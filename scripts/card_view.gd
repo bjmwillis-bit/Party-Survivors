@@ -13,12 +13,16 @@ extends Control
 signal picked(index: int)
 
 const SIZE := Vector2(340, 230)
-const HERO_COLORS := {
-	"Solenne": Color(0.78, 0.12, 0.12),
-	"Cenhelm": Color(0.95, 0.6, 0.15),
-	"Kheiron": Color(0.4, 0.85, 0.4),
-	"Party": Color(0.55, 0.6, 0.7),
-}
+const HeroData := preload("res://scripts/hero_data.gd")
+const PARTY_COLOR := Color(0.55, 0.6, 0.7)
+
+
+## A card's colour comes from its hero (by name), or grey for the party.
+static func hero_color(hero_name: String) -> Color:
+	for k in HeroData.HEROES:
+		if HeroData.HEROES[k]["name"] == hero_name:
+			return HeroData.HEROES[k]["accent"]
+	return PARTY_COLOR
 const RARITY_COLORS := {
 	"common": Color(0.78, 0.78, 0.78),
 	"rare": Color(0.3, 0.6, 1.0),
@@ -68,7 +72,8 @@ func setup(card_index: int, data: Dictionary) -> void:
 	add_child(box)
 	_labels.append(box)
 
-	var top := _label("[%d]   %s" % [index + 1, String(card["hero"]).to_upper()], 18)
+	var lv := "   ·   Lv %d/%d" % [int(card.get("level", 1)), int(card["max"])] if int(card["max"]) > 1 else ""
+	var top := _label("[%d]   %s%s" % [index + 1, String(card["hero"]).to_upper(), lv], 18)
 	top.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
 	box.add_child(top)
 	var title := _label(card["title"], 28)
@@ -165,8 +170,8 @@ func _draw() -> void:
 
 	# Body: hero colour, or two heroes split diagonally for bonds.
 	if r == "bond":
-		var a: Color = HERO_COLORS.get(card["heroes"][0], Color.GRAY).darkened(0.45)
-		var b: Color = HERO_COLORS.get(card["heroes"][1], Color.GRAY).darkened(0.45)
+		var a: Color = hero_color(card["heroes"][0]).darkened(0.45)
+		var b: Color = hero_color(card["heroes"][1]).darkened(0.45)
 		var tl := Vector2.ZERO
 		var tr := Vector2(size.x, 0)
 		var bl := Vector2(0, size.y)
@@ -175,7 +180,7 @@ func _draw() -> void:
 		draw_colored_polygon(PackedVector2Array([tr, br, bl]), Color(b.r, b.g, b.b, shown))
 		draw_line(tr, bl, Color(1, 0.9, 0.6, shown), 3.0)
 	else:
-		var hc: Color = HERO_COLORS.get(card["hero"], Color.GRAY).darkened(0.55)
+		var hc: Color = hero_color(card["hero"]).darkened(0.55)
 		draw_rect(rect, Color(hc.r, hc.g, hc.b, 0.95 * shown))
 
 	# Rarity border.

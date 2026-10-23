@@ -395,7 +395,8 @@ func _move(delta: float) -> void:
 	var hero_xz: Array[Vector2] = []
 	var any_alive := false
 	for h in heroes:
-		alive.append(not h.downed)
+		# Heroes in the air or invisible can't be chased.
+		alive.append(not h.downed and not h.untargetable)
 		hero_xz.append(Vector2(h.position.x, h.position.z))
 		any_alive = any_alive or not h.downed
 	if not any_alive:
@@ -422,7 +423,9 @@ func _move(delta: float) -> void:
 				if dd < best_d:
 					best_d = dd
 					best = h
-		var dist := sqrt(best_d)
+		var dist := sqrt(best_d) if best >= 0 else INF
+		if best < 0:
+			best = 0 # nobody to chase: stand and wait (see below)
 		var v := Vector2.ZERO
 		var stunned := stun_t[i] > 0.0
 		var k := kind[i]
@@ -434,7 +437,7 @@ func _move(delta: float) -> void:
 			v = (p - hero_xz[best]) / maxf(dist, 0.01) * SPEED[k]
 			if age[i] > GOBLIN_LIFE:
 				hp[i] = -1.0 # gone, no reward
-		elif dist > 0.6 + 0.4 * (SCALE[k] - 1.0):
+		elif dist < INF and dist > 0.6 + 0.4 * (SCALE[k] - 1.0):
 			v = (hero_xz[best] - p) / dist * SPEED[k]
 			if slow_t[i] > 0.0:
 				v *= 1.0 - slow_amt[i]

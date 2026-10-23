@@ -11,6 +11,10 @@ var _applied := false
 
 func _initialize() -> void:
 	root.get_node("Game").skip_camp = true
+	# PARTY=halvar,niten,bram tests another trio.
+	var picked := OS.get_environment("PARTY")
+	if picked != "":
+		root.get_node("Game").party_override = Array(picked.split(","))
 	change_scene_to_file("res://scenes/main.tscn")
 
 
@@ -49,21 +53,21 @@ func _process(_delta: float) -> bool:
 		game.party.swap()
 	# Force some blows and damage so counters and heals get exercised too.
 	if _frames % 20 == 0:
-		var sol = game.party.hero("Solenne")
-		if sol != null and not sol.downed:
-			var e: int = game.enemies.nearest(Vector2(sol.position.x, sol.position.z), 30.0)
-			sol.take_hit(2.0, e)
+		for x in game.party.heroes:
+			if not x.downed:
+				var e: int = game.enemies.nearest(Vector2(x.position.x, x.position.z), 30.0)
+				x.take_hit(2.0, e)
 		for h in game.party.heroes:
 			if not h.downed and h.hp > h.max_hp * 0.5:
 				h.take_damage(h.max_hp * 0.03)
 	var l = game.party.leader()
 	if l != null:
-		for slot in ["q", "e", "r"]:
+		for slot in ["q", "e"]:
 			l.cast(slot)
 		# Keep ultimates flowing so every upgrade gets exercised.
 		if _frames % 600 == 0:
 			for h in game.party.heroes:
-				h.cooldown["r"] = 0.0
+				h.cooldown["e"] = 0.0
 	# Head for the boss when one is up (a player would).
 	var boss: int = game.enemies.find_kind(game.enemies.FINAL_BOSS)
 	if boss >= 0 and l != null:
@@ -78,7 +82,7 @@ func _process(_delta: float) -> bool:
 		main.autopilot_dir = to.normalized() if to.length() > 0.5 else Vector3.ZERO
 	if (t > 840.0) or main.ended or _frames > 60 * 60 * 6:
 		for h in game.party.heroes:
-			print("SKILLS %s: Q x%d, E x%d, R x%d, counters x%d, hp %d/%d" % [h.hero_name, h.stats["q"], h.stats["e"], h.stats["r"], h.stats["counter"], int(h.hp), int(h.max_hp)])
+			print("SKILLS %s: Q x%d, E x%d, counters x%d, hp %d/%d" % [h.hero_name, h.stats["q"], h.stats["e"], h.stats["counter"], int(h.hp), int(h.max_hp)])
 		print("RESULT: %s at %ds, kills %d (locked %d), hunters killed %d, final boss %s, chests %d, gold %d" % [
 			"VICTORY" if main.final_killed else ("ended" if main.ended else "ran"), int(t), game.kills, main.locked_kills,
 			main.minis_killed, "killed" if main.final_killed else ("alive" if main.final_spawned else "not spawned"),

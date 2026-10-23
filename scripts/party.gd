@@ -30,6 +30,10 @@ var swap_timer := 0.0
 var speed := 6.2
 var speed_mult := 1.0
 var haste := 1.0 # multiplies every hero's attack speed
+var might := 1.0 # multiplies every hero's damage
+var reach := 1.0 # multiplies every hero's area
+var focus := 1.0 # multiplies every hero's cooldowns
+var echo := 0 # extra instances for every hero's basic attack
 var lead_bonus := 1.2 # the leader deals 20% more damage
 var revive_time := 3.0
 
@@ -41,6 +45,8 @@ var aim_point := Vector3.ZERO # where the leader is aiming, on the ground
 var groves: Array = []
 ## Bond cards in play this run (id -> true). See upgrades.gd.
 var bonds := {}
+## Bram's anvils: {pos, radius, time, bonus, node}.
+var anvils: Array = []
 
 var _form_yaw := 0.0 # direction of the resting formation; turns smoothly
 var _wiped := false
@@ -50,7 +56,7 @@ var _leash_ring: MeshInstance3D
 
 
 func _ready() -> void:
-	for kind in ["solenne", "cenhelm", "kheiron"]:
+	for kind in Game.party_kinds():
 		var h = HeroScript.new()
 		h.setup(kind)
 		add_child(h)
@@ -84,11 +90,10 @@ func _process(delta: float) -> void:
 		swap()
 	if Input.is_action_just_pressed("skill_1"):
 		leader().cast("q")
-	if Input.is_action_just_pressed("skill_2"):
-		leader().cast("e")
 	if Input.is_action_just_pressed("ultimate"):
-		leader().cast("r")
+		leader().cast("e")
 	_tick_grove(delta)
+	_tick_anvils(delta)
 	_move_leader(delta)
 	_aim_leader()
 	_move_followers(delta)
@@ -200,7 +205,7 @@ func _move_leader(delta: float) -> void:
 	if not l.moving:
 		return
 	# Crisp: full speed instantly, no momentum or sliding.
-	l.position += dir * speed * speed_mult * delta
+	l.position += dir * speed * speed_mult * l.speed_mult * delta
 	var lp: Vector2 = Game.clamp_arena(Vector2(l.position.x, l.position.z))
 	l.position.x = lp.x
 	l.position.z = lp.y
@@ -284,7 +289,7 @@ func _move_followers(delta: float) -> void:
 
 		var goal := slot
 		var stop := 0.06
-		var spd: float = speed * speed_mult * 1.1
+		var spd: float = speed * speed_mult * h.speed_mult * 1.1
 		var low: bool = h.hp / h.max_hp < RETREAT_BELOW
 		if h.returning:
 			spd *= 1.4
@@ -493,15 +498,9 @@ func _set_leader(index: int, entrance: bool) -> void:
 
 # --- Damage and reviving -----------------------------------------------------
 
-## Called by the enemies for each blow. Cenhelm takes part of any blow
-## aimed at someone else.
+## Called by the enemies for each blow.
 func apply_hit(target, amount: float, enemy_index: int) -> void:
-	var c = hero("Cenhelm")
-	if c != null and not c.downed and target != c:
-		c.take_damage(amount * c.intercept_share)
-		target.take_hit(amount * (1.0 - c.intercept_share), enemy_index)
-	else:
-		target.take_hit(amount, enemy_index)
+	target.take_hit(amount, enemy_index)
 
 
 func on_hero_downed(h) -> void:
@@ -592,3 +591,51 @@ func _ground_ring(inner: float, outer: float, color: Color) -> MeshInstance3D:
 	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(m)
 	return m
+
+
+# --- Bram's anvils ---------------------------------------------------------------
+
+## An anvil on the ground: heroes within `radius` attack faster and hit
+## harder by `bonus` (0.15 = +15%) for `seconds`.
+func place_anvil(at: Vector3, radius: float, seconds: float, bonus: float) -> void:
+	var root := Node3D.new()
+	root.position = Vector3(at.x, 0.0, at.z)
+	add_child(root)
+	var block := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.9, 0.45, 0.5)
+	block.mesh = box
+	block.material_override = Game.material(Color(0.25, 0.27, 0.3))
+	block.position.y = 0.55
+	root.add_child(block)
+	var base := MeshInstance3D.new()
+	var foot := BoxMesh.new()
+	foot.size = Vector3(0.45, 0.4, 0.4)
+	base.mesh = foot
+	base.material_override = Game.material(Color(0.2, 0.2, 0.22))
+	base.position.y = 0.2
+	root.add_child(base)
+	var ring := _ground_ring(radius - 0.12, radius, Color(0.25, 0.8, 0.75, 0.35))
+	ring.reparent(root, false)
+	ring.position = Vector3(0.0, 0.05, 0.0)
+	anvils.append({"pos": root.position, "radius": radius, "time": seconds, "bonus": bonus, "node": root})
+	Game.fx.ring(root.position, radius, Color(0.25, 0.8, 0.75), 0.4)
+
+
+## The best anvil bonus at a spot (0 if none).
+func anvil_bonus(p: Vector3) -> float:
+	var best := 0.0
+	for a in anvils:
+		if Vector2(p.x - a["pos"].x, p.z - a["pos"].z).length() <= a["radius"]:
+			best = maxf(best, a["bonus"])
+	return best
+
+
+func _tick_anvils(delta: float) -> void:
+	var i := anvils.size() - 1
+	while i >= 0:
+		anvils[i]["time"] -= delta
+		if anvils[i]["time"] <= 0.0:
+			anvils[i]["node"].queue_free()
+			anvils.remove_at(i)
+		i -= 1

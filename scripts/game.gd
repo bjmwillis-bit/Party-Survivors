@@ -25,7 +25,7 @@ var settings := {"damage_numbers": true, "captions": true, "hold_to_attack": fal
 
 ## What carries over between runs. Saved to user://save.json.
 const SAVE_PATH := "user://save.json"
-var progress := {"gold": 0, "nights_survived": 0, "runs": 0, "best_kills": 0}
+var progress := {"gold": 0, "nights_survived": 0, "runs": 0, "best_kills": 0, "party": ["solenne", "cenhelm", "kheiron"]}
 ## Tests switch this off so they never touch the player's save.
 var saving_enabled := true
 
@@ -75,7 +75,8 @@ func load_game() -> void:
 	# Merge, so a save from an older version still loads.
 	for k in progress:
 		if data.get("progress", {}).has(k):
-			progress[k] = int(data["progress"][k])
+			var v = data["progress"][k]
+			progress[k] = v if v is Array else int(v)
 	for k in settings:
 		if data.get("settings", {}).has(k):
 			settings[k] = bool(data["settings"][k])
@@ -89,6 +90,26 @@ func save_game() -> void:
 		push_warning("Could not write the save file.")
 		return
 	f.store_string(JSON.stringify({"version": 1, "progress": progress, "settings": settings}, "\t"))
+
+
+## The three heroes in the party (picked at the campfire). Tests can set
+## `party_override`.
+var party_override: Array = []
+
+
+func party_kinds() -> Array:
+	var HeroData = preload("res://scripts/hero_data.gd")
+	var picked: Array = party_override if not party_override.is_empty() else progress.get("party", [])
+	var out: Array = []
+	for k in picked:
+		if HeroData.HEROES.has(k) and not out.has(k):
+			out.append(k)
+	for k in HeroData.ORDER:
+		if out.size() >= 3:
+			break
+		if not out.has(k):
+			out.append(k)
+	return out.slice(0, 3)
 
 
 ## A run is over: bank its gold and count the night.
@@ -262,10 +283,9 @@ func _setup_input() -> void:
 	_bind_axis("aim_down", JOY_AXIS_RIGHT_Y, 1.0)
 	_bind_keys("skill_1", [KEY_Q])
 	_bind_button("skill_1", JOY_BUTTON_LEFT_SHOULDER)
-	_bind_keys("skill_2", [KEY_E])
-	_bind_axis("skill_2", JOY_AXIS_TRIGGER_LEFT, 1.0)
-	_bind_keys("ultimate", [KEY_R])
+	_bind_keys("ultimate", [KEY_E])
 	_bind_axis("ultimate", JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	_bind_axis("ultimate", JOY_AXIS_TRIGGER_LEFT, 1.0)
 	_bind_keys("swap", [KEY_SPACE, KEY_SHIFT])
 	_bind_button("swap", JOY_BUTTON_A)
 	_bind_button("swap", JOY_BUTTON_RIGHT_SHOULDER)

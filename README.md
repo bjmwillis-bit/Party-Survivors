@@ -26,8 +26,8 @@ Gold earned is banked, and nights survived are counted, in `user://save.json` (w
 |---|---|---|
 | Move | WASD or arrow keys | Left stick |
 | Aim (the leader faces it) | Mouse | Right stick |
-| Leader's skills | Q / E | Left bumper / left trigger |
-| Leader's ultimate | R | Right trigger |
+| Leader's skill | Q | Left bumper |
+| Leader's ultimate | E | Either trigger |
 | Swap leader | Space or Shift | A or right bumper |
 | Pick a level-up card | 1 / 2 / 3 or click | X / Y / B |
 | Reroll / banish (level-up screen) | F / B | |
@@ -54,26 +54,21 @@ The screen's edge glows red when anyone drops below 30%, pulsing harder the lowe
 
 Tuning numbers live at the top of `scripts/party.gd` (`LEASH`, `HEAL_SEEK_BELOW`, `RETREAT_BELOW`, and the `KITE_` numbers).
 
-## The heroes (grey-box versions)
+## The heroes
 
-Basic attacks fire on their own at each hero's attack speed. The leader's Q, E and R are yours to cast. Followers cast Q and E the moment they'd do something; **only the leader can use an ultimate**, so swap a hero in to use theirs. Ultimates start each run half charged.
+Each hero has a basic attack that fires on its own, a **skill (Q)** and an **ultimate (E)**. Followers use their skill the moment it would help; **only the leader can use an ultimate**, so swap a hero in to use theirs. Ultimates start each night half charged. Every hero's numbers and words live in `scripts/hero_data.gd`, and what they do in `scripts/kits/<hero>.gd`.
 
-Enemies strike in distinct blows (once a second each, after a short wind-up).
+**Solenne**: swipes her sword in an arc.
+- Q *Face Me* (14 s): taunts enemies within 6 m for 8 s. While taunting, every blow she takes has a 30% chance to counter with a straight 6 m stab.
+- E *Ultrix* (40 s): slashes across, then forwards, ×3 damage each.
 
-**Solenne**: slashes in an arc. Gains Contempt when struck (+5% damage per stack).
-- Q, *I'll Give You My Back* (passive): every blow she takes has a 30% chance to trigger a counter-skewer at the attacker, piercing up to 4 enemies. No cap.
-- E, *Face Me* (16 s): taunts enemies within 6 m for 6 s, and she takes 40% less damage.
-- R, *Ultrix* (45 s): a slash as she steps back 1 m, then an 8 m lunge where you aim (3x her basic damage to everything she passes). Untouchable throughout.
+**Cenhelm**: one-two punches, each splashing where it lands.
+- Q *Walk Out* (10 s): leaps to the furthest enemy within 8 m; ×1.5 in 4 m where he lands.
+- E *The Horn* (45 s): after a 0.5 s wind-up, the whole screen is slowed 40% for 6 s, takes ×0.5 every second and is pushed back each tick.
 
-**Cenhelm**: left-right punches, each splashing where it lands. Damage scales with his max HP. Takes 25% of hits aimed at his allies.
-- Q, *The Gate* (10 s): ground slam around him. Every punch takes 1 s off the cooldown.
-- E, *Walk Out* (12 s): dashes to the lowest-health ally in the leash, stunning enemies on the way and where he lands for 1.5 s.
-- R, *The Horn* (40 s): everything within 16 m is slowed by half for 6 s, takes a little damage each second, and is pushed back slightly.
-
-**Kheiron**: fires bolts.
-- Q, *Lesson* (4 s): heals the lowest-health ally (never himself) for 5% of their max health.
-- E, *The Grove* (14 s): a leash-sized grove at his feet for 4 s; allies inside heal 1.5% of max health per second. Followers fight inside it and stand in it.
-- R, *Give the Sky* (60 s): pays 20% of his max health (never below 1) to reset the other heroes' ultimates. Combo: Kheiron R, swap, Solenne R, swap, Cenhelm R.
+**Kheiron**: fires bolts. *Lesson* is automatic: every 2 s he heals the most hurt ally (never himself) for 5% of their max health. Healing on him is halved.
+- Q *The Grove* (14 s): a leash-sized grove for 4 s; allies inside heal 1.5% a second.
+- E *Give the Sky* (60 s): pays 20% of his health to reset the other heroes' ultimates.
 
 The leader deals 20% more damage. Swapping has a 1-second cooldown and a small entrance burst.
 
@@ -106,20 +101,21 @@ Every line lives in `scripts/barks.gd` (`LINES`), with room for several variants
 
 ## Level-up cards
 
-Cards are coloured by hero (Solenne red, Cenhelm orange, Kheiron green, party grey) and bordered by rarity, each with its own reveal:
+Cards are built for the three heroes in the party, coloured by hero (party cards are grey) and bordered by rarity. **Every card shows real numbers, before → after**, and its level (e.g. "Lv 2/5").
 
-| Rarity | Reveal | What's in it |
+| Rarity | What it gives | Example |
 |---|---|---|
-| Common | Already there | Small stat boosts |
-| Rare | Blue, after 0.5 s, gentle glow | Bigger stats, cooldowns, extra bolts |
-| Epic | Purple, crackles for 1 s, then a lightning strike | Behaviour changers |
-| Legendary | Gold, burns into place over 1.5 s, flames stay | Ultimate upgrades (every 5th level) |
-| Bond | Gold with lightning, split diagonally into two heroes' colours | Duo combos |
+| Common | Small steps that stack (up to 5) | Damage ×1.00 → ×1.15 · Attack speed · Max health |
+| Rare | Bigger steps (up to 3) | Face Me cooldown 14.0 s → 11.9 s · skill damage · area |
+| Epic | One more per attack (up to 3) | Sword arc: 1 → 2 swipes |
+| Legendary (every 5th level) | Ultimate upgrades that change how it works | *Twice Blind*: Ultrix's two strikes come round once more |
+| Bond (every 5th level) | Duo combos | *Back to Back* (Solenne + Cenhelm) |
 
-- Every 5th level offers 3 cards drawn from all heroes' remaining ultimate upgrades plus any unlocked bonds, so the hero you want isn't guaranteed.
-- A bond unlocks once both of its heroes have at least one ultimate card. Three for now: *Back to Back* (Solenne + Cenhelm), *Penance* (Solenne + Kheiron), *Walk Out Together* (Cenhelm + Kheiron).
-- 3 rerolls and 3 banishes per run. A banished card never comes back that run.
-- The full card list is in `scripts/upgrades.gd`.
+Party cards (up to 5 each): Might, Haste, Vigour, Swiftness, Keen Eyes, Reach, Focus, and the rare **Echo** (+1 to every hero's basic attack).
+
+- A bond unlocks once both of its heroes have at least one ultimate card.
+- 3 rerolls and 3 banishes per night. A banished card never comes back that night.
+- The cards are built in `scripts/upgrades.gd`.
 
 ## Project layout
 

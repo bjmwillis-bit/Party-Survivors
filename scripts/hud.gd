@@ -163,7 +163,7 @@ func _ready() -> void:
 
 	var hint := _label(18)
 	_hint = hint
-	hint.text = "Move: WASD     Aim: mouse     Skills: Q / E     Ultimate: R     Swap leader: Space     Revive: stand next to a fallen hero"
+	hint.text = "Move: WASD     Aim: mouse     Skill: Q     Ultimate: E     Swap leader: Space     Revive: stand next to a fallen hero"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	hint.offset_left = -900
 	hint.offset_top = -48
@@ -221,13 +221,10 @@ func _process(_delta: float) -> void:
 		else:
 			if h.is_leader:
 				bits.append("LEADING")
-			if h.kind == "solenne" and h.contempt > 0:
-				bits.append("Contempt %d" % h.contempt)
 			if not h.is_leader:
-				for slot in ["q", "e", "r"]:
-					if not h.skill_is_passive(slot):
-						var left: float = h.cooldown[slot]
-						bits.append("%s %s" % [slot.to_upper(), "ready" if left <= 0.0 else "%ds" % ceili(left)])
+				for slot in ["q", "e"]:
+					var left: float = h.cooldown[slot]
+					bits.append("%s %s" % [slot.to_upper(), "ready" if left <= 0.0 else "%ds" % ceili(left)])
 		r["status"].text = "   ".join(bits)
 		r["bar"].modulate = Color(1, 1, 1, 0.35) if h.downed else Color.WHITE
 
@@ -317,7 +314,7 @@ func _build_skill_bar(root: Control) -> void:
 	bar.add_theme_constant_override("separation", 16)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(bar)
-	for slot in ["q", "e", "r"]:
+	for slot in ["q", "e"]:
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(260, 90)
 		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -346,11 +343,6 @@ func _update_skill_bar() -> void:
 		var slot: String = s["slot"]
 		var name: String = l.skill_name(slot)
 		var style: StyleBoxFlat = s["style"]
-		if l.skill_is_passive(slot):
-			s["label"].text = "[%s]  %s\n(passive)" % [slot.to_upper(), name]
-			s["panel"].modulate = Color(1, 1, 1, 0.6)
-			style.border_color = Color(0.6, 0.6, 0.6)
-			continue
 		var left: float = l.cooldown[slot]
 		if left <= 0.0:
 			s["label"].text = "[%s]  %s\nready" % [slot.to_upper(), name]
