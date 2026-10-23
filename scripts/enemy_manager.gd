@@ -107,7 +107,8 @@ func _process(delta: float) -> void:
 	_time += delta
 	_frame += 1
 	_remove_dead()
-	_spawn(delta)
+	if Game.main.is_night():
+		_spawn(delta)
 	_rebuild_grid()
 	_move(delta)
 	_render()
@@ -273,6 +274,17 @@ func damage(i: int, amount: float, dir: Vector2, force: float) -> void:
 				Game.main.on_final_boss_killed(p)
 			GOBLIN:
 				Game.main.on_goblin_caught(p)
+
+
+## The night is over: up to `n` enemies crumble away, leaving nothing behind.
+func dissolve(n: int) -> void:
+	var i := count - 1
+	while i >= 0 and n > 0:
+		if hp[i] > 0.0:
+			hp[i] = 0.0
+			Game.fx.death_puff(Vector3(pos[i].x, 0.5, pos[i].y), COLORS[kind[i]])
+			n -= 1
+		i -= 1
 
 
 # --- Each frame --------------------------------------------------------------

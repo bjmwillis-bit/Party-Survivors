@@ -54,8 +54,10 @@ func _build_light() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.glow_enabled = true # runes and fire bloom softly
-	env.glow_intensity = 0.7
+	# Runes and fire bloom softly. Not in the Compatibility renderer (the web
+	# build): without HDR its glow washes the whole picture out.
+	env.glow_enabled = RenderingServer.get_current_rendering_method() != "gl_compatibility"
+	env.glow_intensity = 0.6
 	env.glow_bloom = 0.0
 	env.glow_hdr_threshold = 1.0
 	var world_env := WorldEnvironment.new()
@@ -81,29 +83,53 @@ func _sky(key: String, n: float, d: float) -> Variant:
 	return lerpf(lerpf(k[0], k[1], n), k[2], d)
 
 
+var _sky_now := {} # the light as shown; eases toward the target
+var _snap := true
+
+
+## Jumps straight to the right light (behind a black screen).
+func snap_sky() -> void:
+	_snap = true
+
+
 func _update_sky(delta: float) -> void:
+	# At the fire it's always sundown; in the night (and walking home) the
+	# clock decides. The light eases between them, so after a win the dawn
+	# slowly fades back to sundown while the party rests.
 	var t: float = Game.time_alive
+	if Game.main != null and Game.main.state == Game.main.CAMP:
+		t = 0.0
 	var n := smoothstep(0.0, NIGHTFALL, t)
 	var run_length: float = Game.main.RUN_LENGTH if Game.main != null else 720.0
 	var d := smoothstep(run_length, run_length + DAWN_TIME, t)
-	env.background_color = _sky("background", n, d)
-	env.ambient_light_color = _sky("ambient", n, d)
-	env.ambient_light_energy = _sky("ambient_energy", n, d)
-	sun.light_color = _sky("sun", n, d)
-	sun.light_energy = _sky("sun_energy", n, d)
-	sun.rotation_degrees = Vector3(_sky("sun_pitch", n, d), -35.0, 0.0)
-	var runes: float = _sky("runes", n, d)
+	var k := 1.0 if _snap else 1.0 - exp(-delta * 0.6)
+	_snap = false
+	for key in SKY:
+		var target = _sky(key, n, d)
+		if not _sky_now.has(key):
+			_sky_now[key] = target
+		elif target is Color:
+			_sky_now[key] = (_sky_now[key] as Color).lerp(target, k)
+		else:
+			_sky_now[key] = lerpf(_sky_now[key], target, k)
+	env.background_color = _sky_now["background"]
+	env.ambient_light_color = _sky_now["ambient"]
+	env.ambient_light_energy = _sky_now["ambient_energy"]
+	sun.light_color = _sky_now["sun"]
+	sun.light_energy = _sky_now["sun_energy"]
+	sun.rotation_degrees = Vector3(_sky_now["sun_pitch"], -35.0, 0.0)
+	var runes: float = _sky_now["runes"]
 	_rune_mat.emission_energy_multiplier = runes
 	_edge_mat.albedo_color.a = 0.02 + 0.018 * runes
 	# Braziers flicker; the party carries a warm glow through the dark.
 	_flame_t += delta
-	var fire: float = _sky("fire", n, d)
+	var fire: float = _sky_now["fire"]
 	for i in _flames.size():
 		_flames[i].light_energy = fire * (1.5 + 0.25 * sin(_flame_t * 9.0 + i * 1.7) + 0.15 * sin(_flame_t * 23.0 + i))
 	var l = Game.party.leader() if Game.party != null else null
 	if l != null:
 		_party_light.position = l.position + Vector3(0.0, 3.4, 0.0)
-	_party_light.light_energy = _sky("party", n, d)
+	_party_light.light_energy = _sky_now["party"]
 
 
 # --- Ground ----------------------------------------------------------------------
@@ -353,10 +379,8 @@ func _build_ruins() -> void:
 	while lit < BRAZIERS and tries < 400:
 		tries += 1
 		var p := _random_spot(rng, Game.ARENA_RADIUS - 8.0)
-		if _too_close(p, placed, 6.0) or (lit > 0 and p.length() < 10.0):
+		if _too_close(p, placed, 6.0) or p.length() < 14.0:
 			continue
-		if lit == 0:
-			p = Vector2(5.0, -5.0) # one near the start, so it's seen at once
 		placed.append(p)
 		_brazier(p)
 		lit += 1

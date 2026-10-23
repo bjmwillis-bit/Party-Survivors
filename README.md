@@ -4,6 +4,16 @@ Lead a party of three heroes through a horde. Steer one, the other two fight at 
 
 This is **milestone 1**: a grey-box prototype to answer one question — is steering a party through a crowd fun?
 
+## Between nights: the campfire
+
+The game opens at the party's campfire in the middle of the arena: Kheiron and Cenhelm on logs, Solenne standing. **FIGHT** (Enter) and they get up and walk out as the camera rises into the battle view. **HEROES** (or click a hero at the fire) shows each hero's kit. **TALENTS** unlocks later. **SETTINGS** has damage numbers and captions, saved straight away.
+
+When a night ends, the results appear on top while the game carries on behind them, all in one shot:
+- **A win (or Return to the Keep from the pause menu):** the horde crumbles, the party walks back and sits by the fire, and the camera settles in. **Keep Fighting** works at any moment: they turn round (or get up) and head straight back out.
+- **A fall:** the screen behind the results goes black. **Try Again** fades in on the camp as they stand and set out; **Return to the Keep** fades in with them resting.
+
+Gold earned is banked, and nights survived are counted, in `user://save.json` (with your settings).
+
 ## How to play it
 
 1. Install **Godot 4.7** (standard version) from godotengine.org.
@@ -21,7 +31,8 @@ This is **milestone 1**: a grey-box prototype to answer one question — is stee
 | Swap leader | Space or Shift | A or right bumper |
 | Pick a level-up card | 1 / 2 / 3 or click | X / Y / B |
 | Reroll / banish (level-up screen) | F / B | |
-| Restart after a run | Enter | Start |
+| Pause (resume, settings, return to the Keep) | Esc or P | Start |
+| Menus | Mouse, or arrows + Enter / Esc | Stick + A / B |
 
 Fallen heroes get back up if the leader stands next to them for 3 seconds.
 
@@ -107,9 +118,9 @@ Cards are coloured by hero (Solenne red, Cenhelm orange, Kheiron green, party gr
 ## Project layout
 
 - `scenes/main.tscn`: the one scene; everything else is built in code for now.
-- `scripts/`: one script per system (arena, party, hero, enemies, XP, effects, HUD, upgrades, barks). Each file starts with a comment explaining what it does.
+- `scripts/`: one script per system (arena, camp, campfire interface, results, party, hero, enemies, XP, effects, HUD, upgrades, barks, ui_kit for shared menu styling). Each file starts with a comment explaining what it does.
 - `tests/smoke_test.gd`: a bot that plays a full run without a window and reports how it went. Run it with:
-  `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd`
+  `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd` (tests skip the campfire and never touch your save)
 - `tests/all_cards_test.gd`: switches on every card at once and plays two minutes, to catch broken card effects.
 
 ## Placeholder art
@@ -120,4 +131,4 @@ Both packs are by Kay Lousberg (www.kaylousberg.com) and are CC0 (licences in `a
 
 ## Next
 
-The campfire, saves and the run loop (gold banked, nights counted), then the Keep.
+The Keep: a closed square round the camp with gates, guards on the walls, and see-through walls.

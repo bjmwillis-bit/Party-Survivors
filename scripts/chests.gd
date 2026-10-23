@@ -79,6 +79,8 @@ static func roll_tier() -> String:
 
 
 func _process(delta: float) -> void:
+	if not Game.main.is_night():
+		return
 	var l = Game.party.leader()
 	var i := _chests.size() - 1
 	while i >= 0:

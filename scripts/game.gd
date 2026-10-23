@@ -29,6 +29,14 @@ var progress := {"gold": 0, "nights_survived": 0, "runs": 0, "best_kills": 0}
 ## Tests switch this off so they never touch the player's save.
 var saving_enabled := true
 
+## The results screen. It lives here, outside any scene, so it can stay up
+## while the battle behind it turns into the campfire.
+var results
+## The night that just ended (what the campfire reacts to).
+var last_run := {}
+## Tests set this to start straight in a night, skipping the campfire.
+var skip_camp := false
+
 ## Tests raise this to play faster than real time.
 var base_time_scale := 1.0
 ## Tests turn this off: the freeze is timed in real seconds, which a
@@ -42,6 +50,8 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
 	load_game()
+	results = preload("res://scripts/results.gd").new()
+	add_child(results)
 
 
 func _process(_delta: float) -> void:
@@ -268,7 +278,8 @@ func _setup_input() -> void:
 	_bind_keys("restart", [KEY_ENTER, KEY_KP_ENTER])
 	_bind_keys("reroll", [KEY_F])
 	_bind_keys("banish", [KEY_B])
-	_bind_button("restart", JOY_BUTTON_START)
+	_bind_keys("pause", [KEY_ESCAPE, KEY_P])
+	_bind_button("pause", JOY_BUTTON_START)
 
 
 func _ensure_action(action: String) -> void:
