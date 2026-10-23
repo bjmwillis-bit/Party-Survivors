@@ -12,6 +12,18 @@ var _rows: Array = []
 var _levelup: Control
 var _levelup_title: Label
 var _cards: Array = []
+var _danger: ColorRect
+var _cursor: Control
+const CursorScript := preload("res://scripts/cursor_hud.gd")
+const DANGER_SHADER := """
+shader_type canvas_item;
+uniform float strength = 0.0;
+void fragment() {
+	vec2 d = (UV - 0.5) * vec2(1.6, 1.0);
+	float edge = smoothstep(0.42, 0.9, length(d));
+	COLOR = vec4(0.8, 0.03, 0.03, edge * strength);
+}
+"""
 var _pause: Control # the pause menu (Esc / Start)
 var _pause_resume: Button
 var _hint: Label
@@ -127,25 +139,26 @@ func _ready() -> void:
 	party_box.offset_right = 640
 	party_box.offset_bottom = -24
 	party_box.alignment = BoxContainer.ALIGNMENT_END
-	party_box.add_theme_constant_override("separation", 8)
+	party_box.add_theme_constant_override("separation", 4)
 	party_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(party_box)
 	for h in Game.party.heroes:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
-		var name_label := _label(24)
+		# A small reference panel now: the cursor carries health during play.
+		var name_label := _label(19)
 		name_label.text = h.hero_name
-		name_label.custom_minimum_size = Vector2(130, 0)
+		name_label.custom_minimum_size = Vector2(100, 0)
 		name_label.add_theme_color_override("font_color", h.accent.lerp(Color.WHITE, 0.3))
-		var bar := _bar(Color(0.3, 0.8, 0.35), Vector2(220, 20))
+		var bar := _bar(Color(0.3, 0.8, 0.35), Vector2(150, 12))
 		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var status := _label(20)
+		var status := _label(16)
 		row.add_child(name_label)
 		row.add_child(bar)
 		row.add_child(status)
 		party_box.add_child(row)
 		_rows.append({"hero": h, "bar": bar, "status": status})
-	_swap_label = _label(22)
+	_swap_label = _label(18)
 	party_box.add_child(_swap_label)
 
 	var hint := _label(18)
@@ -160,7 +173,21 @@ func _ready() -> void:
 	hint.modulate = Color(1, 1, 1, 0.7)
 	root.add_child(hint)
 
+	# Red at the screen's edge when anyone is badly hurt.
+	_danger = ColorRect.new()
+	_danger.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_danger.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dm := ShaderMaterial.new()
+	var ds := Shader.new()
+	ds.code = DANGER_SHADER
+	dm.shader = ds
+	_danger.material = dm
+	root.add_child(_danger)
+	root.move_child(_danger, 0)
+
 	_build_skill_bar(root)
+	_cursor = CursorScript.new()
+	root.add_child(_cursor)
 	_build_levelup(root)
 	_build_pause(root)
 
@@ -182,6 +209,7 @@ func _process(_delta: float) -> void:
 		_banner_t -= _delta
 		_banner.modulate.a = clampf(_banner_t / 0.6, 0.0, 1.0)
 	_tick_caption(_delta)
+	_update_danger()
 	_xp_bar.value = float(main.xp_have) / float(main.xp_need)
 
 	for r in _rows:
@@ -449,6 +477,21 @@ func _toggle_banish() -> void:
 
 
 # --- End of run --------------------------------------------------------------
+
+## The screen's edge reddens when anyone drops below 30%, pulsing harder the
+## lower they are.
+func _update_danger() -> void:
+	var lowest := 1.0
+	for h in Game.party.heroes:
+		if not h.downed:
+			lowest = minf(lowest, h.hp / h.max_hp)
+	var s := 0.0
+	if lowest < 0.3 and Game.main.is_night() and not Game.main.ended:
+		var depth := (0.3 - lowest) / 0.3
+		var beat := 0.5 + 0.5 * sin(Time.get_ticks_msec() * (0.006 + 0.008 * depth))
+		s = (0.25 + 0.45 * depth) * (0.6 + 0.4 * beat)
+	(_danger.material as ShaderMaterial).set_shader_parameter("strength", s)
+
 
 ## Fades the whole HUD (it's a CanvasLayer, so its root Control fades).
 func fade_to(alpha: float, seconds: float, from := -1.0) -> void:

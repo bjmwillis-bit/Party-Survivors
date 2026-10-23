@@ -78,7 +78,6 @@ func _process(delta: float) -> void:
 		_reticle.visible = false
 		_leash_ring.visible = false
 		return
-	_reticle.visible = true
 	_leash_ring.visible = true
 	swap_timer = maxf(0.0, swap_timer - delta)
 	if Input.is_action_just_pressed("swap"):
@@ -237,8 +236,8 @@ func _aim_leader() -> void:
 	if to.length() > 0.05:
 		l.aim_dir = Vector2(to.x, to.z).normalized()
 		l.facing = atan2(to.x, to.z)
-	_reticle.visible = not Game.main.autopilot and not l.downed
-	_reticle.position = Vector3(aim_point.x, 0.05, aim_point.z)
+	# The aim is shown by the cursor widget (cursor_hud.gd) now.
+	_reticle.visible = false
 
 
 func _mouse_on_ground():

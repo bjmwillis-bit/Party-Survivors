@@ -118,11 +118,12 @@ static func pop_in(c: Control, delay := 0.0) -> void:
 ## The settings toggles, saved the moment they change.
 static func settings_box(box: VBoxContainer) -> Array[Control]:
 	var made: Array[Control] = []
-	for opt in [["damage_numbers", "Damage numbers"], ["captions", "Captions (spoken lines)"]]:
+	for opt in [["damage_numbers", "Damage numbers"], ["captions", "Captions (spoken lines)"],
+			["hold_to_attack", "Hold left mouse to attack (leader)"]]:
 		var c := CheckButton.new()
 		c.text = opt[1]
 		c.add_theme_font_size_override("font_size", 26)
-		c.button_pressed = bool(Game.settings.get(opt[0], true))
+		c.button_pressed = bool(Game.settings.get(opt[0], false))
 		var key: String = opt[0]
 		c.toggled.connect(func(on: bool) -> void:
 			Game.settings[key] = on

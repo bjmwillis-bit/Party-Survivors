@@ -73,6 +73,7 @@ const HORN_TICK_MULT := 0.25 # damage each second, times his punch damage
 const HORN_PUSH := 3.0
 const SKY_COST := 0.2 # fraction of his max health
 const ULT_START_CHARGE := 0.5 # ultimates start the run half charged
+const ATTACK_BUFFER := 0.25 # hold-to-attack: how early a press still counts
 
 var kind := ""
 var hero_name := ""
@@ -156,6 +157,11 @@ var _anim: AnimationPlayer
 var _anim_state := ""
 var _meshes: Array[MeshInstance3D] = []
 var _skel: Skeleton3D
+var _xray: ShaderMaterial # their colour, shown where something hides them
+## For the cursor widget: when this hero last swung, and last got hit.
+var attacked_at_ms := -100000
+var hit_at_ms := -100000
+var _attack_buffer := 0.0 # hold-to-attack: a press just before the swing is ready
 ## Sitting by the fire: 0 standing, 1 seated on a log (blends while getting up).
 var sit := 0.0
 var seat_raise := 0.0 # how far the model lifts to sit on the log
@@ -257,7 +263,17 @@ func _tick_attack(delta: float) -> void:
 	if dashing:
 		return
 	_attack_timer -= delta * rate_mult * Game.party.haste
+	# Hold-to-attack (a setting): the leader only swings while the button is
+	# held, or if it was pressed just before the swing was ready.
+	var manual: bool = is_leader and bool(Game.settings.get("hold_to_attack", false)) and not Game.main.autopilot
+	if manual:
+		_attack_buffer = maxf(0.0, _attack_buffer - delta)
+		if Input.is_action_just_pressed("attack"):
+			_attack_buffer = ATTACK_BUFFER
 	if _attack_timer > 0.0:
+		return
+	if manual and not Input.is_action_pressed("attack") and _attack_buffer <= 0.0:
+		_attack_timer = 0.0
 		return
 	var attacked := false
 	match kind:
@@ -269,6 +285,14 @@ func _tick_attack(delta: float) -> void:
 			attacked = _attack_kheiron()
 	# No target in range: check again shortly.
 	_attack_timer = attack_interval if attacked else 0.1
+	if attacked:
+		attacked_at_ms = Time.get_ticks_msec()
+		_attack_buffer = 0.0
+
+
+## How charged the next basic attack is, 0 to 1 (for the cursor's timer ring).
+func attack_charge() -> float:
+	return clampf(1.0 - _attack_timer / maxf(0.05, attack_interval), 0.0, 1.0)
 
 
 func _power() -> float:
@@ -871,6 +895,7 @@ func take_damage(amount: float) -> void:
 	if _taunt_time > 0.0:
 		amount *= TAUNT_DAMAGE_TAKEN
 	hp -= amount
+	hit_at_ms = Time.get_ticks_msec()
 	if _hurt_flash_cd <= 0.0:
 		_flash = 0.08
 		_hurt_flash_cd = 0.3
@@ -979,8 +1004,12 @@ func _build_model() -> bool:
 	if _model == null:
 		return false
 	_body.add_child(_model)
+	_xray = ShaderMaterial.new()
+	_xray.shader = _xray_shader()
+	_xray.set_shader_parameter("tint", Color(accent.r, accent.g, accent.b, 0.55))
 	for mi in _model.find_children("*", "MeshInstance3D", true, false):
 		_meshes.append(mi)
+		mi.material_overlay = _xray
 	_anim = _model.get_node("Anim")
 	_anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	_skel = _model.find_child("Skeleton3D", true, false)
@@ -1057,12 +1086,13 @@ func _set_tint(state: int) -> void:
 	if state == _tint:
 		return
 	_tint = state
-	var overlay: Material = null
+	var overlay: Material = _xray
 	if state > 0:
 		var o := StandardMaterial3D.new()
 		o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		o.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		o.albedo_color = Color(1.0, 1.0, 1.0, 0.75) if state == 2 else Color(0.05, 0.05, 0.1, 0.5)
+		o.next_pass = _xray
 		overlay = o
 	for mi in _meshes:
 		mi.material_overlay = overlay
@@ -1173,7 +1203,7 @@ func _flat_ring(inner: float, outer: float, ring_color: Color) -> MeshInstance3D
 
 const HP_RING_SHADER := """
 shader_type spatial;
-render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled;
+render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled, shadows_disabled;
 uniform float fill = 1.0;
 uniform vec4 hp_color : source_color = vec4(0.35, 0.9, 0.4, 1.0);
 uniform float leader = 0.0;
@@ -1206,6 +1236,7 @@ func _build_hp_ring() -> void:
 		_hp_shader.code = HP_RING_SHADER
 	_hp_mat = ShaderMaterial.new()
 	_hp_mat.shader = _hp_shader
+	_hp_mat.render_priority = 10 # drawn over the horde, so it never gets lost
 	var quad := PlaneMesh.new()
 	var size := 2.3 if kind == "cenhelm" else 2.0
 	quad.size = Vector2(size, size)
@@ -1236,3 +1267,39 @@ func _update_hp_ring(delta: float) -> void:
 	if is_leader and frac < HP_LOW:
 		flash = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
 	_hp_mat.set_shader_parameter("flash", flash)
+
+
+# --- Seen through the crowd --------------------------------------------------
+# Where an enemy (or a wall) hides part of a hero, that part shows as a
+# see-through silhouette in the hero's colour. It compares depths, so a
+# hero's own arm in front of their body doesn't count.
+
+const XRAY_SHADER := """
+shader_type spatial;
+render_mode unshaded, depth_test_disabled, depth_draw_never, cull_back, shadows_disabled;
+uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
+uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 0.5);
+void fragment() {
+	float depth = texture(depth_tex, SCREEN_UV).r;
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	vec3 ndc = vec3(SCREEN_UV, depth) * 2.0 - 1.0;
+#else
+	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth);
+#endif
+	vec4 view = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
+	float scene_z = -view.z / view.w;
+	float my_z = -VERTEX.z;
+	float hidden = step(0.5, my_z - scene_z);
+	ALBEDO = tint.rgb;
+	ALPHA = tint.a * hidden;
+}
+"""
+
+static var _xray_shader_res: Shader
+
+
+static func _xray_shader() -> Shader:
+	if _xray_shader_res == null:
+		_xray_shader_res = Shader.new()
+		_xray_shader_res.code = XRAY_SHADER
+	return _xray_shader_res

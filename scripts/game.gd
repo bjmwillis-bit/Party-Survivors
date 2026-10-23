@@ -21,7 +21,7 @@ var shake := 0.0
 var chests
 
 ## Player settings, edited on the campfire's Settings panel and saved.
-var settings := {"damage_numbers": true, "captions": true}
+var settings := {"damage_numbers": true, "captions": true, "hold_to_attack": false}
 
 ## What carries over between runs. Saved to user://save.json.
 const SAVE_PATH := "user://save.json"
@@ -278,6 +278,11 @@ func _setup_input() -> void:
 	_bind_keys("restart", [KEY_ENTER, KEY_KP_ENTER])
 	_bind_keys("reroll", [KEY_F])
 	_bind_keys("banish", [KEY_B])
+	_ensure_action("attack") # hold-to-attack (a setting): left mouse, or X
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	InputMap.action_add_event("attack", click)
+	_bind_button("attack", JOY_BUTTON_X)
 	_bind_keys("pause", [KEY_ESCAPE, KEY_P])
 	_bind_button("pause", JOY_BUTTON_START)
 
