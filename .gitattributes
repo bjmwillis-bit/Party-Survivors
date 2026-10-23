@@ -5,3 +5,4 @@
 *.ogg binary
 *.wav binary
 *.glb binary
+*.bin binary

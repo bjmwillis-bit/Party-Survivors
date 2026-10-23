@@ -146,6 +146,11 @@ var _mat: StandardMaterial3D
 var _lead_ring: MeshInstance3D
 var _revive_ring: MeshInstance3D
 var _taunt_ring: MeshInstance3D
+var _model: Node3D # the KayKit placeholder model, if it loaded
+var _anim: AnimationPlayer
+var _anim_state := ""
+var _meshes: Array[MeshInstance3D] = []
+var _tint := -1
 
 
 func setup(hero_kind: String) -> void:
@@ -173,7 +178,10 @@ func _process(delta: float) -> void:
 	_counter_boost_t = maxf(0.0, _counter_boost_t - delta)
 	for slot in cooldown:
 		cooldown[slot] = maxf(0.0, cooldown[slot] - delta)
-	if _flash > 0.0:
+	if _model != null:
+		_set_tint(2 if _flash > 0.0 else (1 if downed else 0))
+		_update_anim()
+	elif _flash > 0.0:
 		_mat.albedo_color = Color.WHITE
 	elif downed:
 		_mat.albedo_color = color.darkened(0.55)
@@ -187,8 +195,9 @@ func _process(delta: float) -> void:
 		dashing = false
 		var frac: float = revive_progress / Game.party.revive_time
 		_revive_ring.scale = Vector3.ONE * (0.4 + frac * 1.2)
-		_body.rotation.x = lerpf(_body.rotation.x, -1.45, 1.0 - exp(-12.0 * delta))
-		_body.position.y = 0.2
+		if _model == null: # the model plays its death animation instead
+			_body.rotation.x = lerpf(_body.rotation.x, -1.45, 1.0 - exp(-12.0 * delta))
+			_body.position.y = 0.2
 		return
 	_body.rotation.x = lerpf(_body.rotation.x, 0.0, 1.0 - exp(-12.0 * delta))
 
@@ -203,8 +212,9 @@ func _process(delta: float) -> void:
 	# Stepping: a quick bob and sway, with a puff of dust on each footfall.
 	if moving:
 		_bob += delta * 14.0
-		_body.position.y = absf(sin(_bob)) * 0.12
-		_body.rotation.z = sin(_bob) * 0.06
+		if _model == null: # the model's run cycle has its own bounce
+			_body.position.y = absf(sin(_bob)) * 0.12
+			_body.rotation.z = sin(_bob) * 0.06
 		_step_timer -= delta
 		if _step_timer <= 0.0:
 			_step_timer = PI / 14.0
@@ -862,13 +872,121 @@ func revive() -> void:
 
 
 # --- Look --------------------------------------------------------------------
-# Grey-box shapes: a faceted body, a head, and one signature prop in the
-# hero's accent colour, so each reads at a distance. Real models replace this.
+# Placeholder models from KayKit Adventurers (CC0, Kay Lousberg) until the
+# real heroes arrive. If a model is missing, the grey-box shapes below are
+# used instead.
+
+const KAYKIT := "res://assets/kaykit/"
+const MODELS := {
+	"solenne": {"file": "characters/Knight.glb", "scale": 0.8,
+		"hide": ["Knight_Helmet", "Knight_HelmetVisor"], # no helmet: she shows her face
+		"right": "weapons/sword_1handed.gltf"},
+	"cenhelm": {"file": "characters/Barbarian.glb", "scale": 0.95, "hide": [], "right": ""}, # bare hands
+	"kheiron": {"file": "characters/Mage.glb", "scale": 0.78, "hide": [], "right": "weapons/staff.gltf"},
+}
+const ANIM_FILES := ["animations/Rig_Medium_General.glb", "animations/Rig_Medium_MovementBasic.glb"]
+const LOOPING := ["Idle_A", "Idle_B", "Running_A", "Running_B", "Walking_A", "Walking_B", "Walking_C", "Death_A_Pose"]
+
+static var _anim_lib: AnimationLibrary
+
+
+## Every animation from the shared Rig_Medium files, in one library that any
+## KayKit character can play (they all share the same skeleton).
+static func _animations() -> AnimationLibrary:
+	if _anim_lib != null:
+		return _anim_lib
+	_anim_lib = AnimationLibrary.new()
+	for f in ANIM_FILES:
+		var src = Game.model(KAYKIT + f)
+		if src == null:
+			continue
+		var ap := src.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		if ap != null:
+			for n in ap.get_animation_list():
+				if not _anim_lib.has_animation(n):
+					var a: Animation = ap.get_animation(n).duplicate()
+					if n in LOOPING:
+						a.loop_mode = Animation.LOOP_LINEAR
+					_anim_lib.add_animation(n, a)
+		src.free()
+	return _anim_lib
+
+
+func _build_model() -> bool:
+	var m: Dictionary = MODELS.get(kind, {})
+	if m.is_empty():
+		return false
+	var model := Game.model(KAYKIT + str(m["file"]))
+	if model == null:
+		return false
+	_model = model
+	_model.scale = Vector3.ONE * float(m["scale"])
+	_body.add_child(_model)
+	for n in m["hide"]:
+		var part := _model.find_child(n, true, false) as Node3D
+		if part != null:
+			part.visible = false
+	var skel := _model.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skel != null and str(m["right"]) != "":
+		var weapon := Game.model(KAYKIT + str(m["right"]))
+		if weapon != null:
+			var hand := BoneAttachment3D.new()
+			hand.bone_name = "handslot.r"
+			skel.add_child(hand)
+			hand.add_child(weapon)
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		_meshes.append(mi)
+	_anim = AnimationPlayer.new()
+	_model.add_child(_anim)
+	_anim.add_animation_library("", _animations())
+	_update_anim()
+	return true
+
+
+## Picks the animation for what the hero is doing right now.
+func _update_anim() -> void:
+	var want := "Idle_A"
+	var speed_scale := 1.0
+	if downed:
+		want = "Death_A"
+	elif dashing:
+		want = "Running_A"
+		speed_scale = 1.6
+	elif moving:
+		want = "Running_A"
+		speed_scale = 1.15
+	if want != _anim_state and _anim.has_animation(want):
+		_anim_state = want
+		_anim.play(want, 0.12)
+	_anim.speed_scale = speed_scale
+
+
+## Hit flash and the dimmed look when down, drawn as an overlay on the
+## model's own textures. 0 normal, 1 down, 2 flash.
+func _set_tint(state: int) -> void:
+	if state == _tint:
+		return
+	_tint = state
+	var overlay: Material = null
+	if state > 0:
+		var o := StandardMaterial3D.new()
+		o.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		o.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		o.albedo_color = Color(1.0, 1.0, 1.0, 0.75) if state == 2 else Color(0.05, 0.05, 0.1, 0.5)
+		overlay = o
+	for mi in _meshes:
+		mi.material_overlay = overlay
+
 
 func _build_visual() -> void:
 	_body = Node3D.new()
 	add_child(_body)
 	_mat = Game.material(color)
+	if _build_model():
+		_lead_ring = _flat_ring(0.62, 0.78, Color(1.0, 0.82, 0.3, 0.9))
+		_revive_ring = _flat_ring(0.85, 1.0, Color(0.5, 1.0, 0.5, 0.8))
+		_revive_ring.visible = false
+		return
 	var accent_mat := Game.material(accent, 0.5)
 	var size := 1.0
 	if kind == "cenhelm":

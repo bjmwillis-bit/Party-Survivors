@@ -93,6 +93,12 @@ Cards are coloured by hero (Solenne red, Cenhelm orange, Kheiron green, party gr
   `godot --headless --fixed-fps 60 --path . --script res://tests/smoke_test.gd`
 - `tests/all_cards_test.gd`: switches on every card at once and plays two minutes, to catch broken card effects.
 
+## Placeholder art
+
+Until the real heroes arrive, the party wears models from **KayKit Adventurers 2.0** (Knight = Solenne, without her helmet; Barbarian = Cenhelm; Mage = Kheiron), with idle, run and death animations from the same pack. The ruins, braziers and chests come from **KayKit Dungeon Pack 1.1**. Walls, pillars, rubble, barrels and braziers are solid: heroes and enemies walk round them.
+
+Both packs are by Kay Lousberg (www.kaylousberg.com) and are CC0 (licences in `assets/kaykit/`). If a model file is missing, the game falls back to the grey-box shapes.
+
 ## Next
 
-Placeholder hero models from the KayKit Adventurers pack (CC0), then meta-progression (gold, talent trees).
+Runestone ring and a fire-lit night, then ranged kiting and health rings, then the campfire, saves and meta-progression.

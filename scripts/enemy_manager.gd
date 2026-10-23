@@ -458,6 +458,15 @@ func _move(delta: float) -> void:
 			sep[i] = push
 		knock[i] = knock[i] * decay
 		var np := p + (v + sep[i] * 6.0 + knock[i]) * delta
+		# Ruins block the way: slide round them instead of sticking behind.
+		var body_r: float = 0.35 * SCALE[k]
+		var out: Vector2 = Game.push_out(np, body_r)
+		if out != np:
+			var n: Vector2 = (out - np).normalized()
+			var tang := Vector2(-n.y, n.x)
+			if tang.dot(v) < 0.0:
+				tang = -tang
+			np = Game.push_out(out + tang * v.length() * delta, body_r)
 		var a: float = Game.main.ARENA_HALF
 		np.x = clampf(np.x, -a, a)
 		np.y = clampf(np.y, -a, a)

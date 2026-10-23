@@ -22,22 +22,37 @@ func spawn(at: Vector2, tier: String) -> void:
 	var root := Node3D.new()
 	root.position = Vector3(at.x, 0.0, at.y)
 	add_child(root)
-	var body := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(0.9, 0.55, 0.6)
-	body.mesh = box
-	body.material_override = Game.material(Color(0.42, 0.28, 0.16))
-	body.position.y = 0.3
-	root.add_child(body)
-	var lid := MeshInstance3D.new()
-	var lid_box := BoxMesh.new()
-	lid_box.size = Vector3(0.95, 0.18, 0.65)
-	lid.mesh = lid_box
 	var col: Color = TIERS[tier]["color"]
 	var glow := Game.material(col, 0.6)
-	lid.material_override = glow
-	lid.position.y = 0.66
-	root.add_child(lid)
+	var lid: Node3D = null
+	# KayKit chest (CC0) as a placeholder; a plain box if it's missing.
+	var model := Game.model("res://assets/kaykit/dungeon/%s.gltf" % ("chest_gold" if tier == "legendary" else "chest"))
+	if model != null:
+		model.scale = Vector3.ONE * 0.55
+		model.position.y = 0.1
+		root.add_child(model)
+		lid = model.find_child("chest*lid", true, false) as Node3D
+	else:
+		var body := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(0.9, 0.55, 0.6)
+		body.mesh = box
+		body.material_override = Game.material(Color(0.42, 0.28, 0.16))
+		body.position.y = 0.3
+		root.add_child(body)
+	# A glowing band in the chest's rarity colour.
+	var band := MeshInstance3D.new()
+	var band_mesh := TorusMesh.new()
+	band_mesh.inner_radius = 0.62
+	band_mesh.outer_radius = 0.72
+	band_mesh.rings = 24
+	band_mesh.ring_segments = 4
+	band.mesh = band_mesh
+	band.material_override = glow
+	band.scale = Vector3(1.0, 0.25, 1.0)
+	band.position.y = 0.06
+	band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(band)
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.75

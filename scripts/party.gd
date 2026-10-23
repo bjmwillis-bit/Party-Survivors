@@ -265,6 +265,17 @@ func _move_followers(delta: float) -> void:
 			spd = maxf(spd, d * 9.0)
 		var step := minf(d - stop, spd * delta)
 		h.position += to / d * step
+		# Walk round ruins rather than into them.
+		var hp2 := Vector2(h.position.x, h.position.z)
+		var out: Vector2 = Game.push_out(hp2, 0.4)
+		if out != hp2:
+			var n: Vector2 = (out - hp2).normalized()
+			var tang := Vector2(-n.y, n.x)
+			if tang.dot(Vector2(to.x, to.z)) < 0.0:
+				tang = -tang
+			out = Game.push_out(out + tang * step, 0.4)
+			h.position.x = out.x
+			h.position.z = out.y
 		h.moving = step > speed * 0.25 * delta
 		h.move_dir = to / d
 		if h.face_lock <= 0.0 and h.moving:
@@ -297,8 +308,14 @@ func _hunt(from: Vector2, leash_center: Vector2) -> int:
 	return Game.enemies.best_target_in_circle(from, leash_center, LEASH)
 
 
-## Stops heroes standing inside each other.
+## Stops heroes standing inside each other, or inside the ruins.
 func _separate_heroes() -> void:
+	for h in heroes:
+		var p := Vector2(h.position.x, h.position.z)
+		var out: Vector2 = Game.push_out(p, 0.4)
+		if out != p:
+			h.position.x = out.x
+			h.position.z = out.y
 	for i in heroes.size():
 		for j in range(i + 1, heroes.size()):
 			var a = heroes[i]

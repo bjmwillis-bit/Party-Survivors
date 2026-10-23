@@ -56,6 +56,62 @@ func add_shake(amount: float) -> void:
 	shake = maxf(shake, amount)
 
 
+# --- Models and obstacles ----------------------------------------------------
+
+var _scene_cache := {}
+
+## Loads and instances a model (a .glb or .gltf), or returns null if it is
+## missing, so callers can fall back to grey-box shapes.
+func model(path: String) -> Node3D:
+	if not _scene_cache.has(path):
+		_scene_cache[path] = load(path) if ResourceLoader.exists(path) else null
+	var scene = _scene_cache[path]
+	if scene == null:
+		return null
+	return scene.instantiate() as Node3D
+
+
+## Solid round obstacles (pillars, walls, rubble), kept in a coarse grid so
+## every enemy can check the ones near it cheaply. Each is Vector3(x, z, radius).
+const OBSTACLE_CELL := 4.0
+var _obstacles := {}
+
+
+func clear_obstacles() -> void:
+	_obstacles.clear()
+
+
+func add_obstacle(at: Vector2, radius: float) -> void:
+	var lo := Vector2i(floori((at.x - radius - 1.5) / OBSTACLE_CELL), floori((at.y - radius - 1.5) / OBSTACLE_CELL))
+	var hi := Vector2i(floori((at.x + radius + 1.5) / OBSTACLE_CELL), floori((at.y + radius + 1.5) / OBSTACLE_CELL))
+	for gx in range(lo.x, hi.x + 1):
+		for gy in range(lo.y, hi.y + 1):
+			var key := Vector2i(gx, gy)
+			if not _obstacles.has(key):
+				_obstacles[key] = []
+			_obstacles[key].append(Vector3(at.x, at.y, radius))
+
+
+## Moves a point of the given radius out of any obstacle it overlaps.
+func push_out(p: Vector2, radius: float) -> Vector2:
+	var cell = _obstacles.get(Vector2i(floori(p.x / OBSTACLE_CELL), floori(p.y / OBSTACLE_CELL)))
+	if cell == null:
+		return p
+	for o in cell:
+		var c := Vector2(o.x, o.y)
+		var d := p - c
+		var min_d: float = o.z + radius
+		var l2 := d.length_squared()
+		if l2 < min_d * min_d:
+			var l := sqrt(l2)
+			p = c + (d / l if l > 0.001 else Vector2.RIGHT) * min_d
+	return p
+
+
+func blocked(p: Vector2, radius: float) -> bool:
+	return push_out(p, radius) != p
+
+
 # --- Low-poly helpers --------------------------------------------------------
 
 ## Turns a smooth primitive (capsule, sphere...) into a faceted low-poly mesh
